@@ -1,0 +1,52 @@
+body {
+  font-family: Arial, sans-serif;
+  background: #f2f2f2;
+}
+ 
+.container {
+  width: 450px;
+  margin: 40px auto;
+  background: white;
+  padding: 25px;
+  border-radius: 10px;
+}
+ 
+h1 {
+  text-align: center;
+}
+ 
+form {
+  display: flex;
+  flex-direction: column;
+}
+ 
+label {
+  margin-top: 10px;
+  font-weight: bold;
+}
+ 
+input {
+  padding: 10px;
+  margin-top: 5px;
+}
+ 
+button {
+  margin-top: 20px;
+  padding: 10px;
+  background: blue;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+ 
+button:hover {
+  background: darkblue;
+}
+ 
+.card {
+  margin-top: 20px;
+  padding: 20px;
+  background: #eaf4ff;
+  border-radius: 10px;
+}
+ 

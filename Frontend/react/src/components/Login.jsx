@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
 import ForgotPasswordModal from "./ForgotPasswordModal";
 import { validateEmail, validatePassword, getFormValidationErrors } from "../utils/authValidation";
+import { performSecurePostLoginRedirect } from "../utils/navigation";
 import "./Login.css";
 
 function Login() {
@@ -31,14 +32,19 @@ function Login() {
   const emailInputRef = useRef(null);
 
   const navigate = useNavigate();
+  const location = useLocation();
   const { login, isAuthenticated, isLoading: authLoading, error: authError } = useAuth();
+
+  // Extract redirect target parameter from URL query string safely
+  const searchParams = new URLSearchParams(location.search);
+  const redirectTarget = searchParams.get("redirect") || searchParams.get("from") || "/dashboard";
 
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      navigate("/dashboard");
+      performSecurePostLoginRedirect(navigate, redirectTarget);
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, redirectTarget]);
 
   // Handle errors coming from AuthContext
   useEffect(() => {
@@ -172,9 +178,12 @@ function Login() {
     setPassword("");
 
     try {
+      // 1. Send authentication request and await confirmed successful login status
       await login(email, attemptedPassword, abortControllerRef.current.signal);
       setFailedAttempts(0);
-      navigate("/dashboard");
+
+      // 2. Perform post-login redirection exclusively AFTER successful authentication
+      performSecurePostLoginRedirect(navigate, redirectTarget);
     } catch (error) {
       if (error.name === "AbortError") {
         return;

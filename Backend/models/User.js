@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 
-const ALLOWED_ROLES = ["user", "admin", "moderator"];
+const ALLOWED_ROLES = ["user", "admin", "moderator", "teacher", "parent"];
 
 const userSchema = new mongoose.Schema({
   email: {
@@ -22,7 +22,7 @@ const userSchema = new mongoose.Schema({
     required: [true, "Role is required"],
     enum: {
       values: ALLOWED_ROLES,
-      message: "Invalid role '{VALUE}'. Permitted roles are: user, admin, moderator",
+      message: "Invalid role '{VALUE}'. Permitted roles are: user, admin, moderator, teacher, parent",
     },
     default: "user",
     get: (v) => v || "user",

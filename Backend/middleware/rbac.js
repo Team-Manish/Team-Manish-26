@@ -3,8 +3,10 @@ const User = require("../models/User");
 
 // Default role hierarchy mapping: higher roles inherit permissions of lower roles
 const DEFAULT_ROLE_HIERARCHY = {
-  admin: ["admin", "moderator", "user"],
+  admin: ["admin", "moderator", "teacher", "parent", "user"],
   moderator: ["moderator", "user"],
+  teacher: ["teacher"],
+  parent: ["parent"],
   user: ["user"],
 };
 
@@ -79,6 +81,7 @@ const authorize = (requiredRoles, options = {}) => {
           logSecurityEvent("warn", "AUTH_MALFORMED_HEADER", "Authorization header must be formatted as 'Bearer <token>'", req);
           return res.status(401).json({
             success: false,
+            error: "Unauthorized",
             message: "Unauthorized: Invalid Authorization header format. Expected 'Bearer <token>'.",
           });
         }
@@ -91,6 +94,7 @@ const authorize = (requiredRoles, options = {}) => {
         logSecurityEvent("warn", "AUTH_MISSING_TOKEN", "No authentication token provided in request", req);
         return res.status(401).json({
           success: false,
+          error: "Unauthorized",
           message: "Unauthorized: Missing authentication token.",
         });
       }
@@ -104,12 +108,14 @@ const authorize = (requiredRoles, options = {}) => {
           logSecurityEvent("warn", "AUTH_TOKEN_EXPIRED", "JWT token has expired", req);
           return res.status(401).json({
             success: false,
+            error: "Unauthorized",
             message: "Unauthorized: Authentication token has expired.",
           });
         }
         logSecurityEvent("warn", "AUTH_INVALID_TOKEN", `Invalid JWT token: ${err.message}`, req);
         return res.status(401).json({
           success: false,
+          error: "Unauthorized",
           message: "Unauthorized: Invalid authentication token.",
         });
       }
@@ -119,6 +125,7 @@ const authorize = (requiredRoles, options = {}) => {
         logSecurityEvent("warn", "AUTH_MISSING_CLAIM", "JWT payload missing user identifier claim", req);
         return res.status(401).json({
           success: false,
+          error: "Unauthorized",
           message: "Unauthorized: Invalid token payload.",
         });
       }
@@ -131,6 +138,7 @@ const authorize = (requiredRoles, options = {}) => {
         logSecurityEvent("error", "AUTH_DB_ERROR", `Database query error: ${dbErr.message}`, req);
         return res.status(500).json({
           success: false,
+          error: "Internal Server Error",
           message: "Internal server error during user retrieval.",
         });
       }
@@ -139,6 +147,7 @@ const authorize = (requiredRoles, options = {}) => {
         logSecurityEvent("warn", "AUTH_USER_NOT_FOUND", `User ID '${userId}' not found in database`, req, { userId });
         return res.status(404).json({
           success: false,
+          error: "Not Found",
           message: "Not Found: User account does not exist.",
         });
       }
@@ -148,6 +157,7 @@ const authorize = (requiredRoles, options = {}) => {
         logSecurityEvent("warn", "AUTH_INACTIVE_ACCOUNT", `User '${userId}' account is in '${userStatus}' state`, req, { userId, userStatus });
         return res.status(403).json({
           success: false,
+          error: "Forbidden",
           message: `Forbidden: Account is inactive or ${userStatus}.`,
         });
       }
@@ -177,6 +187,7 @@ const authorize = (requiredRoles, options = {}) => {
         });
         return res.status(403).json({
           success: false,
+          error: "Forbidden",
           message: "Forbidden: Insufficient permissions to access this resource.",
         });
       }
@@ -188,6 +199,7 @@ const authorize = (requiredRoles, options = {}) => {
       logSecurityEvent("error", "AUTH_UNEXPECTED_ERROR", unexpectedErr.message, req);
       return res.status(500).json({
         success: false,
+        error: "Internal Server Error",
         message: "Internal server error during authorization.",
       });
     }

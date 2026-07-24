@@ -13,6 +13,9 @@ const dotenv = require("dotenv");
 const connectDB = require("./config/db");
 const studentsRouter = require("./routes/students");
 const authRouter = require("./routes/auth");
+const adminRouter = require("./routes/admin");
+const teacherRouter = require("./routes/teacher");
+const parentRouter = require("./routes/parent");
 
 dotenv.config();
 
@@ -42,7 +45,7 @@ app.use((req, res, next) => {
   const csrfTokenFromHeader = req.headers["x-xsrf-token"];
 
   if (!csrfTokenFromCookie || !csrfTokenFromHeader || csrfTokenFromCookie !== csrfTokenFromHeader) {
-    return res.status(403).json({ success: false, message: "Invalid CSRF token" });
+    return res.status(403).json({ success: false, error: "Forbidden", message: "Invalid CSRF token" });
   }
 
   next();
@@ -66,6 +69,7 @@ const loginLimiter = rateLimit({
   max: 5, // 5 attempts
   message: {
     success: false,
+    error: "Too Many Requests",
     message: "Too many login attempts. Please try again after 15 minutes.",
   },
   standardHeaders: true,
@@ -83,12 +87,23 @@ app.use(express.static(path.join(__dirname, "public")));
 
 app.use("/students", studentsRouter);
 app.use("/api/auth", authRouter);
+app.use("/api/admin", adminRouter);
+app.use("/api/teacher", teacherRouter);
+app.use("/api/parent", parentRouter);
 
 app.use(function (req, res, next) {
   next(createError(404));
 });
 
 app.use(function (err, req, res, next) {
+  if (req.originalUrl && req.originalUrl.startsWith("/api")) {
+    return res.status(err.status || 500).json({
+      success: false,
+      error: err.status === 404 ? "Not Found" : "Internal Server Error",
+      message: err.message,
+    });
+  }
+
   res.locals.message = err.message;
   res.locals.error = req.app.get("env") === "development" ? err : {};
 

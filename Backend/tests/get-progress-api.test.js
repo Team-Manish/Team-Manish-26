@@ -9,8 +9,7 @@ const AcademicProgress = require("../models/AcademicProgress");
 const Student = require("../models/Student");
 const User = require("../models/User");
 
-const rawUri = process.env.TEST_MONGO_URI || process.env.MONGO_URI || "mongodb://localhost:27017/internship_project_get_progress_test";
-const TEST_MONGO_URI = rawUri.replace(/\/[^/?]+(\?|$)/, "/internship_project_get_progress_test$1");
+const TEST_MONGO_URI = process.env.TEST_MONGO_URI || process.env.MONGO_URI || "mongodb://localhost:27017/internship_project_get_progress_test";
 const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-key-use-env-vars";
 
 let server;

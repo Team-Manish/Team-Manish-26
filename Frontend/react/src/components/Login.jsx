@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
 import ForgotPasswordModal from "./ForgotPasswordModal";
+import { validateEmail, validatePassword, getFormValidationErrors } from "../utils/authValidation";
 import "./Login.css";
 
 function Login() {
@@ -13,6 +14,9 @@ function Login() {
   // Field interaction / touched states for real-time inline validation
   const [emailTouched, setEmailTouched] = useState(false);
   const [passwordTouched, setPasswordTouched] = useState(false);
+
+  // Failure counter for suggesting password reset upon repeated authentication failures
+  const [failedAttempts, setFailedAttempts] = useState(0);
 
   // Error states
   const [emailError, setEmailError] = useState("");
@@ -50,16 +54,6 @@ function Login() {
     }
   }, [generalError]);
 
-  // Helper validation routines
-  const validateEmailFormat = (emailVal) => {
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    return emailRegex.test(emailVal.trim());
-  };
-
-  const validatePasswordLength = (pwdVal) => {
-    return pwdVal.length >= 8;
-  };
-
   // Real-time inline email validation as user types
   const handleEmailChange = (e) => {
     const val = e.target.value;
@@ -71,7 +65,7 @@ function Login() {
       setEmailTouched(true);
       if (!val.trim()) {
         setEmailError("Email address is required.");
-      } else if (!validateEmailFormat(val)) {
+      } else if (!validateEmail(val)) {
         setEmailError("Please enter a valid email address format (e.g. parent@example.com).");
       } else {
         setEmailError("");
@@ -90,7 +84,7 @@ function Login() {
       setPasswordTouched(true);
       if (!val) {
         setPasswordError("Password is required.");
-      } else if (!validatePasswordLength(val)) {
+      } else if (!validatePassword(val)) {
         setPasswordError(`Password must be at least 8 characters long (${val.length}/8).`);
       } else {
         setPasswordError("");
@@ -102,7 +96,7 @@ function Login() {
     setEmailTouched(true);
     if (!email.trim()) {
       setEmailError("Email address is required.");
-    } else if (!validateEmailFormat(email)) {
+    } else if (!validateEmail(email)) {
       setEmailError("Please enter a valid email address format (e.g. parent@example.com).");
     } else {
       setEmailError("");
@@ -113,7 +107,7 @@ function Login() {
     setPasswordTouched(true);
     if (!password) {
       setPasswordError("Password is required.");
-    } else if (!validatePasswordLength(password)) {
+    } else if (!validatePassword(password)) {
       setPasswordError(`Password must be at least 8 characters long (${password.length}/8).`);
     } else {
       setPasswordError("");
@@ -153,35 +147,15 @@ function Login() {
     e.preventDefault();
     setEmailTouched(true);
     setPasswordTouched(true);
-    setEmailError("");
-    setPasswordError("");
     setGeneralError("");
 
-    let isValid = true;
-
-    // Validate email
-    if (!email.trim()) {
-      setEmailError("Email address is required.");
-      isValid = false;
-    } else if (!validateEmailFormat(email)) {
-      setEmailError("Please enter a valid email address format (e.g. parent@example.com).");
-      isValid = false;
-    }
-
-    // Validate password
-    if (!password) {
-      setPasswordError("Password is required.");
-      isValid = false;
-    } else if (!validatePasswordLength(password)) {
-      setPasswordError(`Password must be at least 8 characters long (${password.length}/8).`);
-      isValid = false;
-    }
+    // Validate form inputs
+    const { isValid, emailError: eErr, passwordError: pErr } = getFormValidationErrors(email, password);
+    setEmailError(eErr);
+    setPasswordError(pErr);
 
     if (!isValid) {
-      // Focus first error element for keyboard users
-      if (emailError || !email.trim() || !validateEmailFormat(email)) {
-        emailInputRef.current?.focus();
-      }
+      if (eErr) emailInputRef.current?.focus();
       return;
     }
 
@@ -193,34 +167,32 @@ function Login() {
     abortControllerRef.current = new AbortController();
     setIsSubmitting(true);
 
+    const attemptedPassword = password;
+    // Clear password input immediately after capturing for security
+    setPassword("");
+
     try {
-      await login(email, password, abortControllerRef.current.signal);
+      await login(email, attemptedPassword, abortControllerRef.current.signal);
+      setFailedAttempts(0);
       navigate("/dashboard");
     } catch (error) {
       if (error.name === "AbortError") {
         return;
       }
 
-      if (error.message === "Invalid credentials") {
-        setGeneralError("Invalid email address or password. Please check your credentials and try again.");
-      } else if (error.message.includes("attempts") || error.message.includes("locked")) {
-        setGeneralError("Too many failed login attempts. Your parent account is temporarily locked for safety.");
-      } else if (error.message.includes("Network") || error.message === "Failed to fetch") {
-        setGeneralError("Network connection error. Please verify your internet connection and try again.");
-      } else {
-        setGeneralError(error.message || "An error occurred during authentication. Please try again.");
-      }
+      setFailedAttempts((prev) => prev + 1);
+      setGeneralError(error.message || "An unexpected error occurred. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const isEmailValid = emailTouched && email.trim() && validateEmailFormat(email);
-  const isFormValid = email.trim() && validateEmailFormat(email) && password && validatePasswordLength(password);
+  const isEmailValid = emailTouched && email.trim() && validateEmail(email);
+  const isFormValid = email.trim() && validateEmail(email) && password && validatePassword(password);
 
   return (
     <main className="login-container">
-      {/* Background ambient lighting for warm visual vibe */}
+      {/* Background ambient lighting */}
       <div className="bg-shape bg-shape-1" aria-hidden="true"></div>
       <div className="bg-shape bg-shape-2" aria-hidden="true"></div>
 
@@ -288,8 +260,28 @@ function Login() {
               </svg>
             </div>
             <div className="error-alert-content">
-              <strong>Authentication Failure</strong>
+              <strong>Authentication Notice</strong>
               <p>{generalError}</p>
+              {failedAttempts >= 2 && (
+                <div style={{ marginTop: "8px" }}>
+                  <button
+                    type="button"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#991b1b",
+                      fontWeight: "700",
+                      textDecoration: "underline",
+                      cursor: "pointer",
+                      padding: 0,
+                      fontSize: "13px"
+                    }}
+                    onClick={() => setIsForgotModalOpen(true)}
+                  >
+                    Having trouble signing in? Click here to reset your password.
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}

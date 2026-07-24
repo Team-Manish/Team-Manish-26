@@ -82,7 +82,7 @@ app.use(express.static(path.join(__dirname, "public")));
 
 
 app.use("/students", studentsRouter);
-app.use("/api/auth", loginLimiter, authRouter);
+app.use("/api/auth", authRouter);
 
 app.use(function (req, res, next) {
   next(createError(404));

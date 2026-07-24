@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext";
+import { useAuth } from "../auth/useAuth";
 import "./Login.css";
 
 function Login() {
@@ -97,7 +97,7 @@ function Login() {
   };
 
   return (
-    <div className="login-container">
+    <main className="login-container">
       <div className="login-card">
         <h1>Login</h1>
         <p className="subtitle">Sign in to your account</p>
@@ -145,10 +145,12 @@ function Login() {
                 type="button"
                 className="toggle-password"
                 onClick={() => setShowPassword(!showPassword)}
-                aria-label={showPassword ? "Hide password" : "Show password"}
                 disabled={isSubmitting || authLoading}
               >
-                {showPassword ? "🙈" : "👁️"}
+                <span aria-hidden="true">{showPassword ? "🙈" : "👁️"}</span>
+                <span className="sr-only">
+                  {showPassword ? "Hide password" : "Show password"}
+                </span>
               </button>
             </div>
             {passwordError && (
@@ -167,8 +169,9 @@ function Login() {
           </button>
         </form>
       </div>
-    </div>
+    </main>
   );
 }
 
 export default Login;
+

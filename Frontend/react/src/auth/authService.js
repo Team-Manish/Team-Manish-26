@@ -5,7 +5,6 @@ const API_ROOT = "http://localhost:5000/api";
 let csrfToken = null;
 // Store user data locally
 let currentUser = null;
-let userExpiresAt = null;
 
 // Fetch CSRF token
 export const fetchCsrfToken = async () => {
@@ -52,7 +51,6 @@ export const login = async (email, password, signal) => {
   }
 
   currentUser = data.user;
-  userExpiresAt = data.expiresAt;
 
   return {
     user: data.user,
@@ -75,7 +73,6 @@ export const logout = async () => {
     console.error("Error logging out:", error);
   } finally {
     currentUser = null;
-    userExpiresAt = null;
     csrfToken = null;
   }
 };
@@ -93,12 +90,10 @@ export const checkSession = async () => {
       return data.user;
     }
     currentUser = null;
-    userExpiresAt = null;
     return null;
   } catch (error) {
     console.error("Error checking session:", error);
     currentUser = null;
-    userExpiresAt = null;
     return null;
   }
 };

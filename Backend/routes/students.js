@@ -2,6 +2,10 @@ const express = require("express");
 const router = express.Router();
 
 const Student = require("../models/Student");
+const { verifyToken } = require("../middleware/auth");
+
+// Protect all student routes
+router.use(verifyToken);
 
 // CREATE
 router.post("/", async (req, res) => {
@@ -39,7 +43,7 @@ router.put("/:id", async (req, res) => {
     const student = await Student.findByIdAndUpdate(
       req.params.id,
       req.body,
-      { new: true }
+      { returnDocument: "after" }
     );
 
     res.json(student);

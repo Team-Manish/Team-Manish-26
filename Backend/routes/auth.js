@@ -1,29 +1,27 @@
 const express = require("express");
 const { body, validationResult } = require("express-validator");
 const jwt = require("jsonwebtoken");
+const rateLimit = require("express-rate-limit");
 const User = require("../models/User");
+const { verifyToken } = require("../middleware/auth");
 
 const router = express.Router();
 
-// Middleware to verify JWT
-const verifyToken = (req, res, next) => {
-  const token = req.cookies["auth-token"];
-  
-  if (!token) {
-    return res.status(401).json({ success: false, message: "Unauthorized" });
-  }
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "fallback-secret-key-use-env-vars");
-    req.user = decoded;
-    next();
-  } catch (error) {
-    return res.status(401).json({ success: false, message: "Invalid or expired token" });
-  }
-};
+// Rate limiting for login endpoint ONLY
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 attempts
+  message: {
+    success: false,
+    message: "Too many login attempts. Please try again after 15 minutes.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 router.post(
   "/login",
+  loginLimiter,
   [
     body("email").isEmail().withMessage("Please enter a valid email address"),
     body("password")

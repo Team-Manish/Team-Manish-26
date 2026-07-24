@@ -16,6 +16,7 @@ const authRouter = require("./routes/auth");
 const adminRouter = require("./routes/admin");
 const teacherRouter = require("./routes/teacher");
 const parentRouter = require("./routes/parent");
+const progressRouter = require("./routes/progress");
 
 dotenv.config();
 
@@ -90,6 +91,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/teacher", teacherRouter);
 app.use("/api/parent", parentRouter);
+app.use("/api/progress", progressRouter);
 
 app.use(function (req, res, next) {
   next(createError(404));

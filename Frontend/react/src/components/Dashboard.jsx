@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../auth/useAuth";
 import StudentForm from "./StudentForm";
 import StudentCard from "./StudentCard";
+import ProgressUpdateForm from "./ProgressUpdateForm";
 import {
   getStudents,
   createStudent,
@@ -12,6 +13,7 @@ import "./Dashboard.css";
 
 const Dashboard = () => {
   const { user, logout, isLoggingOut } = useAuth();
+  const [activeTab, setActiveTab] = useState("progress"); // 'progress' | 'directory'
   const [students, setStudents] = useState([]);
   const [editingStudent, setEditingStudent] = useState(null);
   const [isLoadingStudents, setIsLoadingStudents] = useState(true);
@@ -86,13 +88,35 @@ const Dashboard = () => {
     <main className="dashboard-container">
       <div className="dashboard-header">
         <div className="header-title">
-          <h1>Student Management Dashboard</h1>
+          <h1>Student Portal Dashboard</h1>
           <p className="user-badge">
             Signed in as: <strong>{user?.email}</strong> ({user?.role})
           </p>
         </div>
         <button className="logout-btn" onClick={logout} disabled={isLoggingOut}>
           {isLoggingOut ? "Logging out..." : "Logout"}
+        </button>
+      </div>
+
+      {/* Navigation Tabs */}
+      <div className="dashboard-tabs" role="tablist" aria-label="Dashboard Navigation">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "progress"}
+          className={`tab-btn ${activeTab === "progress" ? "active-tab" : ""}`}
+          onClick={() => setActiveTab("progress")}
+        >
+          📝 Progress & Grade Entry
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "directory"}
+          className={`tab-btn ${activeTab === "directory" ? "active-tab" : ""}`}
+          onClick={() => setActiveTab("directory")}
+        >
+          📁 Student Directory ({students.length})
         </button>
       </div>
 
@@ -108,48 +132,55 @@ const Dashboard = () => {
         </div>
       )}
 
-      <div className="dashboard-grid">
-        <section className="dashboard-form-section" aria-labelledby="form-heading">
-          <StudentForm
-            onSubmit={handleFormSubmit}
-            initialData={editingStudent}
-            onCancel={() => setEditingStudent(null)}
-            isSubmitting={isSubmitting}
-          />
+      {activeTab === "progress" ? (
+        <section aria-label="Student Progress Entry">
+          <ProgressUpdateForm />
         </section>
+      ) : (
+        <div className="dashboard-grid">
+          <section className="dashboard-form-section" aria-labelledby="form-heading">
+            <StudentForm
+              onSubmit={handleFormSubmit}
+              initialData={editingStudent}
+              onCancel={() => setEditingStudent(null)}
+              isSubmitting={isSubmitting}
+            />
+          </section>
 
-        <section className="dashboard-list-section" aria-labelledby="list-heading">
-          <div className="section-header">
-            <h2 id="list-heading">Student Directory</h2>
-            <span className="count-badge">{students.length} Total</span>
-          </div>
+          <section className="dashboard-list-section" aria-labelledby="list-heading">
+            <div className="section-header">
+              <h2 id="list-heading">Student Directory</h2>
+              <span className="count-badge">{students.length} Total</span>
+            </div>
 
-          {isLoadingStudents ? (
-            <div className="loading-spinner">Loading student directory...</div>
-          ) : students.length === 0 ? (
-            <div className="empty-state">
-              <p>No student records found. Add your first student using the form.</p>
-            </div>
-          ) : (
-            <div className="student-cards-grid">
-              {students.map((student) => (
-                <StudentCard
-                  key={student._id}
-                  student={student}
-                  onEdit={(s) => {
-                    setEditingStudent(s);
-                    window.scrollTo({ top: 0, behavior: "smooth" });
-                  }}
-                  onDelete={handleDelete}
-                  isDeleting={deletingId === student._id}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-      </div>
+            {isLoadingStudents ? (
+              <div className="loading-spinner">Loading student directory...</div>
+            ) : students.length === 0 ? (
+              <div className="empty-state">
+                <p>No student records found. Add your first student using the form.</p>
+              </div>
+            ) : (
+              <div className="student-cards-grid">
+                {students.map((student) => (
+                  <StudentCard
+                    key={student._id}
+                    student={student}
+                    onEdit={(s) => {
+                      setEditingStudent(s);
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                    onDelete={handleDelete}
+                    isDeleting={deletingId === student._id}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      )}
     </main>
   );
 };
 
 export default Dashboard;
+

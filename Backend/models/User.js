@@ -27,6 +27,12 @@ const userSchema = new mongoose.Schema({
     default: "user",
     get: (v) => v || "user",
   },
+  status: {
+    type: String,
+    enum: ["active", "suspended", "pending", "deleted"],
+    default: "active",
+    get: (v) => v || "active",
+  },
 }, {
   timestamps: true,
   toObject: { getters: true },

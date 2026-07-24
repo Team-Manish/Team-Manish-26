@@ -28,5 +28,8 @@ const requireRole = (...allowedRoles) => {
   };
 };
 
-module.exports = { verifyToken, requireRole };
+const { authorize } = require("./rbac");
+
+module.exports = { verifyToken, requireRole, authorize };
+
 

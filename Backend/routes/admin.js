@@ -78,4 +78,38 @@ router.put("/users/:id/status", async (req, res) => {
   }
 });
 
+// POST /api/admin/system-settings - Admin Settings Config
+router.post("/system-settings", (req, res) => {
+  const { maintenanceMode, sessionTimeout } = req.body;
+  res.status(200).json({
+    success: true,
+    message: "Admin System Settings Updated Successfully",
+    settings: { maintenanceMode: !!maintenanceMode, sessionTimeout: sessionTimeout || 3600 },
+  });
+});
+
+// DELETE /api/admin/users/:id - Admin User Deletion
+router.delete("/users/:id", async (req, res) => {
+  try {
+    const user = await User.findByIdAndDelete(req.params.id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "Not Found",
+        message: "User not found.",
+      });
+    }
+    res.status(200).json({
+      success: true,
+      message: "User deleted by admin.",
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: "Internal Server Error",
+      message: err.message,
+    });
+  }
+});
+
 module.exports = router;

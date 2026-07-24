@@ -48,4 +48,21 @@ router.post("/grades", (req, res) => {
   });
 });
 
+// PUT /api/teacher/grades/:id - Teacher Update Grade
+router.put("/grades/:id", (req, res) => {
+  const { grade } = req.body;
+  res.status(200).json({
+    success: true,
+    message: `Grade record ${req.params.id} updated to ${grade} by teacher.`,
+  });
+});
+
+// DELETE /api/teacher/assignments/:id - Teacher Delete Assignment
+router.delete("/assignments/:id", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: `Assignment ${req.params.id} deleted by teacher.`,
+  });
+});
+
 module.exports = router;

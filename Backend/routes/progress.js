@@ -1,12 +1,223 @@
 const express = require("express");
+const jwt = require("jsonwebtoken");
 const router = express.Router();
 const UserProgress = require("../models/UserProgress");
+const AcademicProgress = require("../models/AcademicProgress");
+const Student = require("../models/Student");
+const User = require("../models/User");
 
 const VALID_COMPLETION_STATUSES = ["not_started", "in_progress", "completed", "blocked"];
+const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-key-use-env-vars";
+
+// In-memory cache for fast sub-200ms lookup of progress records (TTL: 60s)
+const progressCache = new Map();
+const CACHE_TTL_MS = 60 * 1000;
+
+function getCachedProgress(key) {
+  const cached = progressCache.get(key);
+  if (!cached) return null;
+  if (Date.now() - cached.timestamp > CACHE_TTL_MS) {
+    progressCache.delete(key);
+    return null;
+  }
+  return cached.data;
+}
+
+function setCachedProgress(key, data) {
+  progressCache.set(key, { timestamp: Date.now(), data });
+}
+
+function invalidateCacheKey(studentId, subject) {
+  if (!studentId || !subject) return;
+  const key = `${studentId.trim().toLowerCase()}:${subject.trim().toLowerCase()}`;
+  progressCache.delete(key);
+}
+
+/**
+ * Helper to title case strings (e.g. "computer science" -> "Computer Science")
+ */
+function toTitleCase(str) {
+  if (!str || typeof str !== "string") return str;
+  return str
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+/**
+ * Helper to extract and verify user from Bearer header or cookie
+ */
+function extractUserFromRequest(req) {
+  const authHeader = req.headers.authorization || req.headers.Authorization;
+  let token = null;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.substring(7).trim();
+  } else if (req.cookies && req.cookies["auth-token"]) {
+    token = req.cookies["auth-token"];
+  }
+
+  if (!token) return req.user || null;
+
+  try {
+    return jwt.verify(token, JWT_SECRET);
+  } catch (err) {
+    return null;
+  }
+}
+
+/**
+ * GET /api/progress & GET /api/v1/progress
+ * Retrieve student learning progress by studentId and subject query parameters.
+ */
+router.get("/", async (req, res) => {
+  try {
+    const { studentId, subject } = req.query;
+
+    // 1. Query parameter validation: studentId & subject are required
+    if (!studentId || typeof studentId !== "string" || !studentId.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Bad Request",
+        message: "Missing or malformed required query parameter 'studentId'. Must be a non-empty string.",
+      });
+    }
+
+    if (!subject || typeof subject !== "string" || !subject.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Bad Request",
+        message: "Missing or malformed required query parameter 'subject'. Must be a non-empty string.",
+      });
+    }
+
+    const trimmedStudentId = studentId.trim();
+    const normalizedSubject = toTitleCase(subject);
+
+    // Validate studentId format (3-30 alphanumeric, hyphen, underscore)
+    if (!/^[A-Za-z0-9_-]{3,30}$/.test(trimmedStudentId)) {
+      return res.status(400).json({
+        success: false,
+        error: "Bad Request",
+        message: `Invalid 'studentId' format '${trimmedStudentId}'. Must be 3-30 alphanumeric characters, hyphens, or underscores.`,
+      });
+    }
+
+    // 2. Authorization / Security Controls
+    const user = extractUserFromRequest(req);
+    if (user) {
+      const userRole = user.role || "student";
+      const isTeacherOrAdmin = ["teacher", "admin", "moderator"].includes(userRole);
+      const isOwnStudent =
+        (user.studentId && user.studentId === trimmedStudentId) ||
+        (user.email && user.email.toLowerCase() === trimmedStudentId.toLowerCase());
+
+      if (!isTeacherOrAdmin && !isOwnStudent) {
+        return res.status(403).json({
+          success: false,
+          error: "Forbidden",
+          message: `Access denied. Client with role '${userRole}' is not authorized to view progress for studentId '${trimmedStudentId}'.`,
+        });
+      }
+    }
+
+    // 3. Performance Cache Lookup (Sub-200ms target)
+    const cacheKey = `${trimmedStudentId.toLowerCase()}:${normalizedSubject.toLowerCase()}`;
+    const cachedRecord = getCachedProgress(cacheKey);
+    if (cachedRecord) {
+      return res.status(200).json({
+        success: true,
+        message: "Student progress record retrieved successfully (cached).",
+        cached: true,
+        data: cachedRecord,
+      });
+    }
+
+    // 4. Student Existence Validation
+    const studentDoc = await Student.findOne({
+      $or: [{ studentId: trimmedStudentId }, { email: trimmedStudentId.toLowerCase() }],
+    });
+
+    const hasProgressRecord = await AcademicProgress.exists({
+      studentId: trimmedStudentId,
+    });
+
+    if (!studentDoc && !hasProgressRecord) {
+      return res.status(404).json({
+        success: false,
+        error: "Not Found",
+        message: `Student record not found for studentId '${trimmedStudentId}'.`,
+      });
+    }
+
+    if (studentDoc && studentDoc.enrolledSubjects && studentDoc.enrolledSubjects.length > 0) {
+      const isEnrolled = studentDoc.enrolledSubjects.some(
+        (s) => s.toLowerCase() === normalizedSubject.toLowerCase()
+      );
+      if (!isEnrolled) {
+        return res.status(404).json({
+          success: false,
+          error: "Not Found",
+          message: `Student '${trimmedStudentId}' is not enrolled in subject '${normalizedSubject}'.`,
+        });
+      }
+    }
+
+    // 5. Database Query for Progress Data
+    const progressDoc = await AcademicProgress.findOne({
+      studentId: trimmedStudentId,
+      subject: normalizedSubject,
+    });
+
+    if (!progressDoc) {
+      return res.status(404).json({
+        success: false,
+        error: "Not Found",
+        message: `No progress record found for studentId '${trimmedStudentId}' and subject '${normalizedSubject}'.`,
+      });
+    }
+
+    const responsePayload = {
+      id: progressDoc._id.toString(),
+      studentId: progressDoc.studentId,
+      subject: progressDoc.subject,
+      grade: progressDoc.grade,
+      overallCompletionPercentage:
+        progressDoc.overallCompletionPercentage !== undefined
+          ? progressDoc.overallCompletionPercentage
+          : typeof progressDoc.grade === "number"
+          ? progressDoc.grade
+          : 100,
+      topics: progressDoc.topics || [],
+      cumulativeTimeSpentMinutes: progressDoc.cumulativeTimeSpentMinutes || 0,
+      latestActivityTimestamp:
+        progressDoc.latestActivityTimestamp || progressDoc.updatedAt || progressDoc.date,
+      remarks: progressDoc.remarks || "",
+      date: progressDoc.date,
+      createdAt: progressDoc.createdAt,
+      updatedAt: progressDoc.updatedAt,
+    };
+
+    setCachedProgress(cacheKey, responsePayload);
+
+    return res.status(200).json({
+      success: true,
+      message: "Student progress record retrieved successfully.",
+      cached: false,
+      data: responsePayload,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      error: "Internal Server Error",
+      message: `Failed to retrieve student progress record: ${err.message}`,
+    });
+  }
+});
 
 /**
  * Validates payload fields for POST/PUT progress requests.
- * Returns an error message string if invalid, or null if valid.
  */
 function validateProgressPayload(data, isUpdate = false) {
   const { userId, contentId, progressPercentage, completionStatus, timestamp } = data;
@@ -59,7 +270,6 @@ function validateProgressPayload(data, isUpdate = false) {
 
 /**
  * POST /api/progress
- * Create a new user progress record in MongoDB.
  */
 router.post("/", async (req, res) => {
   try {
@@ -86,6 +296,7 @@ router.post("/", async (req, res) => {
     });
 
     const savedRecord = await progressRecord.save();
+    invalidateCacheKey(userId, contentId);
 
     return res.status(201).json({
       success: true,
@@ -118,9 +329,7 @@ router.post("/", async (req, res) => {
 });
 
 /**
- * PUT /api/progress/:userId/:contentId
- * PUT /api/progress
- * Update an existing user progress record in MongoDB by userId and contentId.
+ * PUT /api/progress/:userId/:contentId & PUT /api/progress
  */
 const handlePutProgress = async (req, res) => {
   try {
@@ -174,6 +383,8 @@ const handlePutProgress = async (req, res) => {
         message: `Progress record not found for userId '${targetUserId}' and contentId '${targetContentId}'.`,
       });
     }
+
+    invalidateCacheKey(targetUserId, targetContentId);
 
     return res.status(200).json({
       success: true,

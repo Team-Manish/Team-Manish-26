@@ -5,9 +5,8 @@ require("dotenv").config();
 
 const AcademicProgress = require("../models/AcademicProgress");
 
-const TEST_MONGO_URI =
-  process.env.MONGO_URI ||
-  "mongodb://localhost:27017/internship_project_academic_progress_test";
+const rawUri = process.env.TEST_MONGO_URI || process.env.MONGO_URI || "mongodb://localhost:27017/internship_project_academic_progress_test";
+const TEST_MONGO_URI = rawUri.replace(/\/[^/?]+(\?|$)/, "/internship_project_academic_progress_test$1");
 
 before(async () => {
   if (mongoose.connection.readyState === 0) {

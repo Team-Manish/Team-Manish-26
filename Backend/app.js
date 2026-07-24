@@ -92,6 +92,7 @@ app.use("/api/admin", adminRouter);
 app.use("/api/teacher", teacherRouter);
 app.use("/api/parent", parentRouter);
 app.use("/api/progress", progressRouter);
+app.use("/api/v1/progress", progressRouter);
 
 app.use(function (req, res, next) {
   next(createError(404));

@@ -26,6 +26,21 @@ function toTitleCase(str) {
     .join(" ");
 }
 
+const topicBreakdownSchema = new mongoose.Schema(
+  {
+    topicId: { type: String, required: true, trim: true },
+    title: { type: String, required: true, trim: true },
+    completionStatus: {
+      type: String,
+      enum: ["not_started", "in_progress", "completed", "blocked"],
+      default: "completed",
+    },
+    lastAccessed: { type: Date, default: Date.now },
+    score: { type: Number, min: 0, max: 100, default: 0 },
+  },
+  { _id: false }
+);
+
 const academicProgressSchema = new mongoose.Schema(
   {
     studentId: {
@@ -38,7 +53,6 @@ const academicProgressSchema = new mongoose.Schema(
           if (typeof v !== "string") return false;
           const trimmed = v.trim();
           if (trimmed.length === 0) return false;
-          // Must match valid student ID format: 3-30 alphanumeric characters, hyphens, or underscores
           return /^[A-Za-z0-9_-]{3,30}$/.test(trimmed);
         },
         message: (props) =>
@@ -56,7 +70,6 @@ const academicProgressSchema = new mongoose.Schema(
           if (typeof v !== "string") return false;
           const trimmed = v.trim();
           if (trimmed.length < 2 || trimmed.length > 100) return false;
-          // Must be a valid academic subject name (letters, numbers, spaces, hyphens, ampersands, dots, parentheses)
           return /^[A-Za-z0-9\s&\-\.()]{2,100}$/.test(trimmed);
         },
         message: (props) =>
@@ -71,23 +84,19 @@ const academicProgressSchema = new mongoose.Schema(
         validator: function (v) {
           if (v === null || v === undefined) return false;
 
-          // Numeric grade validation (number type)
           if (typeof v === "number") {
             return !isNaN(v) && v >= 0 && v <= 100;
           }
 
-          // String grade validation (numeric string or letter grade)
           if (typeof v === "string") {
             const trimmed = v.trim();
             if (trimmed === "") return false;
 
-            // Check if string represents a valid number in range [0, 100]
             if (!isNaN(trimmed) && !isNaN(parseFloat(trimmed))) {
               const num = parseFloat(trimmed);
               return num >= 0 && num <= 100;
             }
 
-            // Check if string matches allowed institutional letter grades
             const upper = trimmed.toUpperCase();
             return ALLOWED_LETTER_GRADES.includes(upper);
           }
@@ -99,6 +108,33 @@ const academicProgressSchema = new mongoose.Schema(
             ", "
           )}).`,
       },
+    },
+
+    overallCompletionPercentage: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: function () {
+        if (typeof this.grade === "number") return this.grade;
+        if (typeof this.grade === "string" && !isNaN(this.grade)) return parseFloat(this.grade);
+        return 100;
+      },
+    },
+
+    cumulativeTimeSpentMinutes: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+
+    latestActivityTimestamp: {
+      type: Date,
+      default: Date.now,
+    },
+
+    topics: {
+      type: [topicBreakdownSchema],
+      default: [],
     },
 
     remarks: {
@@ -117,7 +153,6 @@ const academicProgressSchema = new mongoose.Schema(
           if (!v) return false;
           const d = new Date(v);
           if (isNaN(d.getTime())) return false;
-          // Valid academic calendar date range check (1970 - 2100)
           const year = d.getFullYear();
           return year >= 1970 && year <= 2100;
         },
@@ -127,7 +162,7 @@ const academicProgressSchema = new mongoose.Schema(
     },
   },
   {
-    timestamps: true, // Automatically adds createdAt and updatedAt fields
+    timestamps: true,
   }
 );
 
@@ -149,6 +184,10 @@ academicProgressSchema.pre("validate", function () {
     if (ALLOWED_LETTER_GRADES.includes(trimmedGrade)) {
       this.grade = trimmedGrade;
     }
+  }
+
+  if (this.overallCompletionPercentage === undefined && typeof this.grade === "number") {
+    this.overallCompletionPercentage = this.grade;
   }
 
   if (this.remarks && typeof this.remarks === "string") {

@@ -6,9 +6,8 @@ require("dotenv").config();
 const app = require("../app");
 const UserProgress = require("../models/UserProgress");
 
-const TEST_MONGO_URI =
-  process.env.MONGO_URI ||
-  "mongodb://localhost:27017/internship_project_user_progress_test";
+const rawUri = process.env.TEST_MONGO_URI || process.env.MONGO_URI || "mongodb://localhost:27017/internship_project_user_progress_test";
+const TEST_MONGO_URI = rawUri.replace(/\/[^/?]+(\?|$)/, "/internship_project_user_progress_test$1");
 
 let server;
 let port;

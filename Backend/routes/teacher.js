@@ -57,11 +57,50 @@ router.put("/grades/:id", (req, res) => {
   });
 });
 
-// DELETE /api/teacher/assignments/:id - Teacher Delete Assignment
-router.delete("/assignments/:id", (req, res) => {
-  res.status(200).json({
+// POST /api/teacher/progress - Teacher Progress Tracking Endpoint
+router.post("/progress", (req, res) => {
+  const { progressPercentage, taskId, statusIdentifier, timestamp, message, metadata } = req.body;
+
+  if (progressPercentage === undefined || typeof progressPercentage !== "number" || progressPercentage < 0 || progressPercentage > 100) {
+    return res.status(400).json({
+      success: false,
+      error: "Bad Request",
+      message: "Invalid or missing 'progressPercentage'. Must be a number between 0 and 100.",
+    });
+  }
+
+  if (!taskId || typeof taskId !== "string" || !taskId.trim()) {
+    return res.status(400).json({
+      success: false,
+      error: "Bad Request",
+      message: "Invalid or missing 'taskId'. Must be a non-empty string.",
+    });
+  }
+
+  const validStatuses = ["pending", "in_progress", "completed", "blocked"];
+  if (!statusIdentifier || !validStatuses.includes(statusIdentifier)) {
+    return res.status(400).json({
+      success: false,
+      error: "Bad Request",
+      message: `Invalid or missing 'statusIdentifier'. Allowed values: ${validStatuses.join(", ")}.`,
+    });
+  }
+
+  const progressRecord = {
+    id: `PROG-${Date.now()}`,
+    taskId: taskId.trim(),
+    progressPercentage,
+    statusIdentifier,
+    message: message ? String(message).trim() : "",
+    timestamp: timestamp || new Date().toISOString(),
+    metadata: metadata && typeof metadata === "object" ? metadata : {},
+    updatedBy: req.user ? req.user.email : "system",
+  };
+
+  res.status(201).json({
     success: true,
-    message: `Assignment ${req.params.id} deleted by teacher.`,
+    message: `Progress update of ${progressPercentage}% recorded for task ${taskId}.`,
+    data: progressRecord,
   });
 });
 

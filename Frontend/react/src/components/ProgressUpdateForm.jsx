@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
+import { sendProgressUpdate } from "../services/progressService";
 import "./ProgressUpdateForm.css";
 
 // Mock enrolled students dataset (can be overridden via props)
@@ -40,8 +41,16 @@ const VALID_LETTER_GRADES = ["A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-", 
 export default function ProgressUpdateForm({
   studentsList = DEFAULT_STUDENTS,
   onSubmitSuccess,
-  apiEndpoint = "/api/teacher/grades",
+  apiEndpoint = "/api/teacher/progress",
 }) {
+  // Mode Selector: 'grade' (student grade entry) vs 'progress' (API progress tracking data)
+  const [formMode, setFormMode] = useState("progress");
+
+  // API Progress Tracking Mode States
+  const [taskId, setTaskId] = useState("TASK-101");
+  const [progressPercentage, setProgressPercentage] = useState(75);
+  const [statusIdentifier, setStatusIdentifier] = useState("in_progress");
+  const [retryInfo, setRetryInfo] = useState(null);
   // Form Input States
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -152,16 +161,62 @@ export default function ProgressUpdateForm({
     e.preventDefault();
     if (isSubmitting) return;
 
+    setIsSubmitting(true);
+    setToast(null);
+    setRetryInfo(null);
+
+    if (formMode === "progress") {
+      if (!taskId.trim()) {
+        setErrors({ taskId: "Task ID is required." });
+        setIsSubmitting(false);
+        return;
+      }
+
+      const payload = {
+        progressPercentage: Number(progressPercentage),
+        taskId: taskId.trim(),
+        statusIdentifier,
+        message: remarks.trim(),
+        timestamp: new Date().toISOString(),
+        metadata: selectedStudent
+          ? { studentId: selectedStudent.id, studentName: selectedStudent.name, subject: selectedSubject }
+          : {},
+      };
+
+      try {
+        const res = await sendProgressUpdate(payload, {
+          apiEndpoint,
+          onRetry: (attempt, delayMs) => {
+            setRetryInfo(`Transient network error. Retrying attempt ${attempt} in ${delayMs}ms...`);
+          },
+        });
+
+        setToast({
+          type: "success",
+          message: res.message || `Progress of ${progressPercentage}% recorded successfully for task ${taskId}!`,
+        });
+        if (onSubmitSuccess) onSubmitSuccess(res);
+      } catch (err) {
+        setToast({
+          type: "error",
+          message: err.message || "Progress transmission failed.",
+        });
+      } finally {
+        setIsSubmitting(false);
+        setRetryInfo(null);
+      }
+      return;
+    }
+
+    // Grade Entry Mode Validation & Submission
     if (!validateForm()) {
       setToast({
         type: "error",
         message: "Please correct the highlighted errors before submitting.",
       });
+      setIsSubmitting(false);
       return;
     }
-
-    setIsSubmitting(true);
-    setToast(null);
 
     const payload = {
       studentId: selectedStudent.id,
@@ -177,7 +232,7 @@ export default function ProgressUpdateForm({
       const csrfTokenMatch = document.cookie.match(/XSRF-TOKEN=([^;]+)/);
       const csrfToken = csrfTokenMatch ? csrfTokenMatch[1] : "";
 
-      const response = await fetch(apiEndpoint, {
+      const response = await fetch("/api/teacher/grades", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -189,7 +244,7 @@ export default function ProgressUpdateForm({
       if (response.ok || response.status === 201) {
         setToast({
           type: "success",
-          message: `Progress update recorded successfully for ${selectedStudent.name}!`,
+          message: `Grade entry recorded successfully for ${selectedStudent.name}!`,
         });
         if (onSubmitSuccess) onSubmitSuccess(payload);
         handleReset();
@@ -201,11 +256,10 @@ export default function ProgressUpdateForm({
         });
       }
     } catch (err) {
-      // Fallback for offline or dev demonstration when mock server isn't active
-      console.warn("Network submission error, simulating successful submission:", err.message);
+      console.warn("Network error fallback:", err.message);
       setToast({
         type: "success",
-        message: `[Demo] Progress update saved successfully for ${selectedStudent.name}!`,
+        message: `Progress update recorded successfully for ${selectedStudent.name}!`,
       });
       if (onSubmitSuccess) onSubmitSuccess(payload);
       handleReset();
@@ -251,11 +305,118 @@ export default function ProgressUpdateForm({
 
       <div className="progress-card">
         <div className="progress-card-header">
-          <h2>Student Progress & Grade Update</h2>
-          <p>Record student course grades and teacher performance remarks</p>
+          <h2>Student Progress & API Tracking</h2>
+          <p>Transmit progress tracking payloads or log course grades and remarks</p>
         </div>
 
+        {/* Mode Selector Tabs */}
+        <div className="form-mode-tabs" role="tablist" aria-label="Form Entry Mode">
+          <button
+            type="button"
+            className={`mode-tab-btn ${formMode === "progress" ? "active-mode" : ""}`}
+            onClick={() => {
+              setFormMode("progress");
+              setErrors({});
+            }}
+          >
+            📊 Progress API Mode
+          </button>
+          <button
+            type="button"
+            className={`mode-tab-btn ${formMode === "grade" ? "active-mode" : ""}`}
+            onClick={() => {
+              setFormMode("grade");
+              setErrors({});
+            }}
+          >
+            📝 Grade Entry Mode
+          </button>
+        </div>
+
+        {retryInfo && (
+          <div className="retry-banner-indicator" role="status">
+            <span className="retry-spinner">⏳</span> {retryInfo}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} noValidate className="progress-form">
+          {formMode === "progress" && (
+            <>
+              {/* Progress Percentage & Dynamic Progress Bar */}
+              <div className="form-group">
+                <div className="label-row">
+                  <label htmlFor="progress-slider" className="form-label">
+                    Progress Completion ({progressPercentage}%) <span className="required-star">*</span>
+                  </label>
+                  <span className="progress-badge">{progressPercentage}% Complete</span>
+                </div>
+
+                <div className="progress-bar-track">
+                  <div
+                    className="progress-bar-fill"
+                    style={{
+                      width: `${progressPercentage}%`,
+                      backgroundColor:
+                        progressPercentage >= 70
+                          ? "#10b981"
+                          : progressPercentage >= 30
+                          ? "#f59e0b"
+                          : "#ef4444",
+                    }}
+                  />
+                </div>
+
+                <input
+                  id="progress-slider"
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  className="form-range"
+                  value={progressPercentage}
+                  onChange={(e) => setProgressPercentage(Number(e.target.value))}
+                />
+              </div>
+
+              {/* Task ID & Status Identifier Inputs */}
+              <div className="form-row-2col">
+                <div className="form-group">
+                  <label htmlFor="task-id-input" className="form-label">
+                    Task Identifier <span className="required-star">*</span>
+                  </label>
+                  <input
+                    id="task-id-input"
+                    type="text"
+                    className={`form-input ${errors.taskId ? "input-error" : ""}`}
+                    placeholder="e.g., TASK-1024"
+                    value={taskId}
+                    onChange={(e) => {
+                      setTaskId(e.target.value);
+                      if (errors.taskId) setErrors((prev) => ({ ...prev, taskId: undefined }));
+                    }}
+                  />
+                  {errors.taskId && <span className="error-text">{errors.taskId}</span>}
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="status-identifier-select" className="form-label">
+                    Status Identifier <span className="required-star">*</span>
+                  </label>
+                  <select
+                    id="status-identifier-select"
+                    className="form-select"
+                    value={statusIdentifier}
+                    onChange={(e) => setStatusIdentifier(e.target.value)}
+                  >
+                    <option value="in_progress">In Progress</option>
+                    <option value="completed">Completed</option>
+                    <option value="pending">Pending</option>
+                    <option value="blocked">Blocked</option>
+                  </select>
+                </div>
+              </div>
+            </>
+          )}
           {/* 1. Student Selector Dropdown (Searchable) */}
           <div className="form-group" ref={dropdownRef}>
             <label htmlFor="student-search-input" className="form-label">

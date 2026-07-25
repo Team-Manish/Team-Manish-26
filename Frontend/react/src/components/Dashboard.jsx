@@ -88,9 +88,14 @@ const Dashboard = () => {
     <main className="dashboard-container">
       <div className="dashboard-header">
         <div className="header-title">
-          <h1>Student Portal Dashboard</h1>
+          <h1>
+            {user?.role === "teacher" && "👨‍🏫 Educator & Class Management Console"}
+            {user?.role === "parent" && "👨‍👩‍👧 Parent Portal - Child Progress Tracker"}
+            {user?.role === "admin" && "🛡️ System Administration & Telemetry Portal"}
+            {(user?.role === "user" || user?.role === "student" || !["teacher", "parent", "admin"].includes(user?.role)) && "🎓 Student Learning & Academic Portal"}
+          </h1>
           <p className="user-badge">
-            Signed in as: <strong>{user?.email}</strong> ({user?.role})
+            Signed in as: <strong>{user?.email}</strong> <span style={{ textTransform: "uppercase", padding: "2px 8px", background: "#eef2ff", color: "#4f46e5", borderRadius: "12px", fontWeight: "bold", fontSize: "12px", marginLeft: "6px" }}>{user?.role || "user"}</span>
           </p>
         </div>
         <button className="logout-btn" onClick={logout} disabled={isLoggingOut}>

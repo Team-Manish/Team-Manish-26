@@ -84,7 +84,8 @@ app.use(logger("dev"));
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, "public")));
-
+const frontendDistPath = path.join(__dirname, "../Frontend/react/dist");
+app.use(express.static(frontendDistPath));
 
 app.use("/students", studentsRouter);
 app.use("/api/auth", authRouter);
@@ -94,7 +95,16 @@ app.use("/api/parent", parentRouter);
 app.use("/api/progress", progressRouter);
 app.use("/api/v1/progress", progressRouter);
 
-app.use(function (req, res, next) {
+// SPA Client-Side Fallback for single-origin hosting
+app.get("*", (req, res, next) => {
+  if (req.originalUrl.startsWith("/api") || req.originalUrl.startsWith("/students")) {
+    return next(createError(404));
+  }
+  const indexPath = path.join(frontendDistPath, "index.html");
+  const fs = require("fs");
+  if (fs.existsSync(indexPath)) {
+    return res.sendFile(indexPath);
+  }
   next(createError(404));
 });
 

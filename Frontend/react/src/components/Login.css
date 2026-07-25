@@ -1,29 +1,4 @@
-/* Parent Portal Design System Tokens */
 :root {
-  --color-primary: #4f46e5;
-  --color-primary-hover: #4338ca;
-  --color-primary-active: #3730a3;
-  --color-primary-light: #eef2ff;
-  --color-accent-amber: #d97706;
-  --color-text-main: #0f172a;
-  --color-text-muted: #64748b;
-  --color-text-light: #94a3b8;
-  --color-bg-page: linear-gradient(135deg, #fdfbf7 0%, #f5f3ff 50%, #eff6ff 100%);
-  --color-card-bg: #ffffff;
-  --color-border: #cbd5e1;
-  --color-border-hover: #94a3b8;
-  --color-border-focus: #6366f1;
-  --color-error-bg: #fef2f2;
-  --color-error-border: #fca5a5;
-  --color-error-text: #991b1b;
-  --color-error-icon: #dc2626;
-  --color-success-text: #16a34a;
-  --color-success-bg: #f0fdf4;
-  
-  --shadow-card: 0 20px 40px -15px rgba(15, 23, 42, 0.08), 0 0 1px 1px rgba(15, 23, 42, 0.05);
-  --shadow-btn: 0 4px 14px rgba(79, 70, 229, 0.35);
-  --shadow-btn-hover: 0 6px 20px rgba(79, 70, 229, 0.45);
-
   --radius-card: 24px;
   --radius-input: 12px;
   --radius-btn: 12px;
@@ -73,16 +48,77 @@
 /* Form Container Card - Strict Max-Width 480px on desktop */
 .login-card-wrapper {
   position: relative;
-  z-index: 1;
   width: 100%;
-  max-width: 480px;
+  max-width: 520px;
   background: var(--color-card-bg);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  padding: 40px 36px;
-  box-sizing: border-box;
-  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  padding: 36px 32px;
+  z-index: 1;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Role Selector Tabs */
+.role-selector-tabs {
+  display: flex;
+  gap: 6px;
+  background: #f1f5f9;
+  padding: 4px;
+  border-radius: 14px;
+  margin-bottom: 24px;
+}
+
+.role-tab {
+  flex: 1;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.role-tab:hover {
+  color: #0f172a;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.role-tab-active {
+  background: #ffffff !important;
+  color: #4f46e5 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="dark"] .login-card-wrapper {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .role-selector-tabs {
+  background: #0f172a;
+}
+
+[data-theme="dark"] .role-tab {
+  color: #94a3b8;
+}
+
+[data-theme="dark"] .role-tab:hover {
+  color: #f8fafc;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .role-tab-active {
+  background: #334155 !important;
+  color: #818cf8 !important;
+}
+
+[data-theme="dark"] .form-input {
+  background: var(--color-input-bg);
+  color: var(--color-text-main);
 }
 
 /* Parent Portal Header & Branding */

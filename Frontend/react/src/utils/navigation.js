@@ -5,16 +5,28 @@
 export const DEFAULT_REDIRECT_PATH = "/dashboard";
 
 /**
+ * Returns the designated portal dashboard path for a given user role.
+ * @param {string} role - User role (user, student, teacher, parent, admin)
+ * @returns {string} Role-specific dashboard route
+ */
+export const getRoleDefaultDashboard = (role) => {
+  const normalized = (role || "").toLowerCase().trim();
+  switch (normalized) {
+    case "teacher":
+      return "/teacher/dashboard";
+    case "parent":
+      return "/parent/dashboard";
+    case "admin":
+      return "/admin/dashboard";
+    case "student":
+    case "user":
+    default:
+      return "/student/dashboard";
+  }
+};
+
+/**
  * Validates and sanitizes a redirect target URL to prevent Open Redirect vulnerabilities.
- * Allows relative paths starting with '/' but strictly blocks:
- * - Protocol-relative URLs (e.g. '//attacker.com', '/\attacker.com')
- * - Absolute URLs with protocols (e.g. 'http://', 'https://')
- * - Script or data URI schemes (e.g. 'javascript:', 'data:', 'vbscript:')
- * - Absolute URLs containing domain authority
- * 
- * @param {string} rawUrl - Candidate redirect target URL
- * @param {string} fallbackPath - Default safe fallback path (/dashboard)
- * @returns {string} Sanitized safe relative URL
  */
 export const sanitizeRedirectUrl = (rawUrl, fallbackPath = DEFAULT_REDIRECT_PATH) => {
   if (!rawUrl || typeof rawUrl !== "string") {
@@ -27,22 +39,18 @@ export const sanitizeRedirectUrl = (rawUrl, fallbackPath = DEFAULT_REDIRECT_PATH
     return fallbackPath;
   }
 
-  // Block script and data schemes
   if (/^(?:javascript|data|vbscript|file):/i.test(trimmed)) {
     return fallbackPath;
   }
 
-  // Block protocol-relative URLs (e.g., //evil.com or /\evil.com or \\evil.com)
   if (/^[/\\]{2,}/.test(trimmed) || /^[/\\][\\/]/.test(trimmed)) {
     return fallbackPath;
   }
 
-  // Block absolute URLs with explicit schemes (e.g. http://, https://)
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
     return fallbackPath;
   }
 
-  // Ensure path starts with a single '/'
   if (trimmed.startsWith("/")) {
     return trimmed;
   }
@@ -51,17 +59,28 @@ export const sanitizeRedirectUrl = (rawUrl, fallbackPath = DEFAULT_REDIRECT_PATH
 };
 
 /**
- * Safely executes post-login redirection to the target dashboard route.
- * Handles parent window detection, popup contexts, cross-origin security restrictions,
- * and falls back gracefully to React Router navigate or location assignment.
+ * Safely executes post-login redirection to the target role-specific dashboard route.
  * 
  * @param {Function} navigate - React Router navigate function
- * @param {string} targetUrl - Target redirect path
- * @param {Object} options - Custom options (e.g. closePopup: true)
- * @returns {{ success: boolean, method: string, targetUrl: string, error?: string }}
+ * @param {string|Object} targetUrlOrUser - Target redirect path or User object/role string
+ * @param {Object} options - Custom options (e.g. userRole: "teacher")
  */
-export const performSecurePostLoginRedirect = (navigate, targetUrl = DEFAULT_REDIRECT_PATH, options = {}) => {
-  const safePath = sanitizeRedirectUrl(targetUrl);
+export const performSecurePostLoginRedirect = (navigate, targetUrlOrUser = DEFAULT_REDIRECT_PATH, options = {}) => {
+  let userRole = options.userRole;
+  let targetUrl = typeof targetUrlOrUser === "string" ? targetUrlOrUser : DEFAULT_REDIRECT_PATH;
+
+  if (typeof targetUrlOrUser === "object" && targetUrlOrUser !== null) {
+    userRole = targetUrlOrUser.role;
+  }
+
+  // If target URL is generic /dashboard or default, resolve to role-specific dashboard
+  if (!targetUrl || targetUrl === "/dashboard" || targetUrl === DEFAULT_REDIRECT_PATH) {
+    if (userRole) {
+      targetUrl = getRoleDefaultDashboard(userRole);
+    }
+  }
+
+  const safePath = sanitizeRedirectUrl(targetUrl, userRole ? getRoleDefaultDashboard(userRole) : DEFAULT_REDIRECT_PATH);
 
   try {
     // 1. Check if running inside a popup child window with an accessible parent opener

@@ -1,21 +1,21 @@
 /* Progress Update Form Stylesheet */
 
 :root {
-  --primary-accent: #4f46e5;
-  --primary-accent-hover: #4338ca;
+  --primary-accent: var(--color-primary, #4f46e5);
+  --primary-accent-hover: var(--color-primary-hover, #4338ca);
   --primary-glow: rgba(79, 70, 229, 0.25);
-  --secondary-bg: #f8fafc;
-  --secondary-text: #64748b;
-  --dark-text: #0f172a;
-  --border-color: #cbd5e1;
-  --border-focus: #6366f1;
+  --secondary-bg: var(--color-input-bg, #f8fafc);
+  --secondary-text: var(--color-text-muted, #64748b);
+  --dark-text: var(--color-text-main, #0f172a);
+  --border-color: var(--color-border, #cbd5e1);
+  --border-focus: var(--color-border-focus, #6366f1);
   --error-color: #ef4444;
-  --error-bg: #fef2f2;
+  --error-bg: var(--color-error-bg, #fef2f2);
   --success-color: #10b981;
-  --success-bg: #ecfdf5;
+  --success-bg: var(--color-success-bg, #ecfdf5);
   --warning-color: #f59e0b;
-  --card-bg: #ffffff;
-  --shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+  --card-bg: var(--color-card-bg, #ffffff);
+  --shadow-lg: var(--shadow-card);
 }
 
 .progress-form-container {
@@ -28,7 +28,7 @@
 /* Glassmorphism / Sleek Card Container */
 .progress-card {
   background: var(--card-bg);
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-color);
   border-radius: 16px;
   padding: 2rem;
   box-shadow: var(--shadow-lg);

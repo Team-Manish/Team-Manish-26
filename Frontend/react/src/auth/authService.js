@@ -1,5 +1,6 @@
-const API_BASE_URL = "http://localhost:5000/api/auth";
-const API_ROOT = "http://localhost:5000/api";
+const BASE_ORIGIN = typeof window !== "undefined" ? window.location.origin : "http://localhost:5000";
+const API_ROOT = `${BASE_ORIGIN}/api`;
+const API_BASE_URL = `${API_ROOT}/auth`;
 
 // Store CSRF token & current user session in memory
 let csrfToken = null;

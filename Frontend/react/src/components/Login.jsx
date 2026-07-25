@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
 import ForgotPasswordModal from "./ForgotPasswordModal";
+import ThemeToggle from "./ThemeToggle";
 import { validateEmail, validatePassword, getFormValidationErrors } from "../utils/authValidation";
 import { performSecurePostLoginRedirect } from "../utils/navigation";
 import "./Login.css";
@@ -120,6 +121,55 @@ function Login() {
     }
   };
 
+  const [activeRole, setActiveRole] = useState("parent");
+
+  const roleConfigs = {
+    student: {
+      tag: "Student Portal",
+      title: "Welcome Back, Students",
+      subtitle: "Sign in to access your course modules, assignment grades, topic progress, and instructor feedback.",
+      demoEmail: "student@school.com",
+      demoPassword: "Student123!",
+      icon: "🎓",
+    },
+    teacher: {
+      tag: "Teacher Hub",
+      title: "Welcome Back, Educators",
+      subtitle: "Sign in to manage class rosters, evaluate student submissions, assign grades, and update progress.",
+      demoEmail: "teacher@school.com",
+      demoPassword: "Teacher123!",
+      icon: "👨‍🏫",
+    },
+    parent: {
+      tag: "Parent Portal",
+      title: "Welcome Back, Parents",
+      subtitle: "Sign in to track your child's academic growth, subject evaluation reports, attendance, and school updates.",
+      demoEmail: "parent@school.com",
+      demoPassword: "ParentPass2026!",
+      icon: "👨‍👩‍👧",
+    },
+    admin: {
+      tag: "Admin Operations",
+      title: "System Operations Center",
+      subtitle: "Sign in to manage user permissions, system security, role hierarchies, and platform telemetry.",
+      demoEmail: "admin@school.com",
+      demoPassword: "Admin123!",
+      icon: "🛡️",
+    },
+  };
+
+  const handleRoleSelect = (roleKey) => {
+    setActiveRole(roleKey);
+    setGeneralError("");
+    const config = roleConfigs[roleKey];
+    setEmail(config.demoEmail);
+    setPassword(config.demoPassword);
+    setEmailTouched(true);
+    setPasswordTouched(true);
+    setEmailError("");
+    setPasswordError("");
+  };
+
   // Quick preset helper for easy manual testing
   const handleFillDemo = (type = "success") => {
     setGeneralError("");
@@ -127,24 +177,20 @@ function Login() {
     setPasswordTouched(true);
 
     if (type === "success") {
-      setEmail("sarah.jenkins@parentportal.org");
-      setPassword("ParentPass2026!");
+      const config = roleConfigs[activeRole];
+      setEmail(config.demoEmail);
+      setPassword(config.demoPassword);
       setEmailError("");
       setPasswordError("");
     } else if (type === "invalid_auth") {
-      setEmail("invalid@parent.com");
+      setEmail(`invalid.${activeRole}@school.com`);
       setPassword("WrongPassword123");
       setEmailError("");
       setPasswordError("");
-    } else if (type === "short_pwd") {
-      setEmail("parent@example.com");
-      setPassword("123");
-      setEmailError("");
-      setPasswordError("Password must be at least 8 characters long (3/8).");
     } else if (type === "bad_email") {
       setEmail("invalid-email-address");
-      setPassword("ParentPass2026!");
-      setEmailError("Please enter a valid email address format (e.g. parent@example.com).");
+      setPassword("Pass1234!");
+      setEmailError("Please enter a valid email address format (e.g. user@example.com).");
       setPasswordError("");
     }
   };
@@ -174,21 +220,16 @@ function Login() {
     setIsSubmitting(true);
 
     const attemptedPassword = password;
-    // Clear password input immediately after capturing for security
     setPassword("");
 
     try {
-      // 1. Send authentication request and await confirmed successful login status
       await login(email, attemptedPassword, abortControllerRef.current.signal);
       setFailedAttempts(0);
-
-      // 2. Perform post-login redirection exclusively AFTER successful authentication
       performSecurePostLoginRedirect(navigate, redirectTarget);
     } catch (error) {
       if (error.name === "AbortError") {
         return;
       }
-
       setFailedAttempts((prev) => prev + 1);
       setGeneralError(error.message || "An unexpected error occurred. Please try again.");
     } finally {
@@ -198,6 +239,7 @@ function Login() {
 
   const isEmailValid = emailTouched && email.trim() && validateEmail(email);
   const isFormValid = email.trim() && validateEmail(email) && password && validatePassword(password);
+  const currentConfig = roleConfigs[activeRole];
 
   return (
     <main className="login-container">
@@ -206,21 +248,49 @@ function Login() {
       <div className="bg-shape bg-shape-2" aria-hidden="true"></div>
 
       <div className="login-card-wrapper">
-        {/* Parent Portal Header & Branding */}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "12px" }}>
+          <ThemeToggle />
+        </div>
+        {/* Role Switcher Tabs */}
+        <nav className="role-selector-tabs" aria-label="Portal Selection">
+          <button
+            type="button"
+            className={`role-tab ${activeRole === "student" ? "role-tab-active" : ""}`}
+            onClick={() => handleRoleSelect("student")}
+          >
+            🎓 Student
+          </button>
+          <button
+            type="button"
+            className={`role-tab ${activeRole === "teacher" ? "role-tab-active" : ""}`}
+            onClick={() => handleRoleSelect("teacher")}
+          >
+            👨‍🏫 Teacher
+          </button>
+          <button
+            type="button"
+            className={`role-tab ${activeRole === "parent" ? "role-tab-active" : ""}`}
+            onClick={() => handleRoleSelect("parent")}
+          >
+            👨‍👩‍👧 Parent
+          </button>
+          <button
+            type="button"
+            className={`role-tab ${activeRole === "admin" ? "role-tab-active" : ""}`}
+            onClick={() => handleRoleSelect("admin")}
+          >
+            🛡️ Admin
+          </button>
+        </nav>
+
+        {/* Portal Header & Branding */}
         <header className="brand-header">
           <div className="brand-logo-badge" aria-hidden="true">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-              <circle cx="9" cy="7" r="4"></circle>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-            </svg>
+            <span style={{ fontSize: "24px" }}>{currentConfig.icon}</span>
           </div>
-          <span className="brand-tag">Parent Portal</span>
-          <h1 className="login-title">Welcome Back, Parents</h1>
-          <p className="login-subtitle">
-            Sign in to track your child's academic growth, attendance, and school updates.
-          </p>
+          <span className="brand-tag">{currentConfig.tag}</span>
+          <h1 className="login-title">{currentConfig.title}</h1>
+          <p className="login-subtitle">{currentConfig.subtitle}</p>
         </header>
 
         {/* Demo Quick Test Bar */}
@@ -230,9 +300,9 @@ function Login() {
             type="button" 
             className="demo-chip chip-success"
             onClick={() => handleFillDemo("success")}
-            title="Fill valid demo parent credentials"
+            title={`Fill valid demo ${activeRole} credentials`}
           >
-            Demo Parent
+            Demo {activeRole.toUpperCase()}
           </button>
           <button 
             type="button" 

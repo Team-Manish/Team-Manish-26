@@ -1,6 +1,13 @@
 import { fetchCsrfToken } from "../auth/authService";
 
-const API_STUDENTS_URL = "http://localhost:5000/students";
+const getBackendOrigin = () => {
+  if (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_BACKEND_URL) {
+    return import.meta.env.VITE_BACKEND_URL;
+  }
+  return typeof window !== "undefined" ? window.location.origin : "http://localhost:5000";
+};
+
+const API_STUDENTS_URL = `${getBackendOrigin()}/students`;
 
 export const getStudents = async () => {
   const response = await fetch(API_STUDENTS_URL, {

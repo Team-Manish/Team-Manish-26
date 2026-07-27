@@ -46,7 +46,7 @@ Internship Final Project/
 │   ├── routes/                   # API Endpoints (/api/auth, /students)
 │   ├── scripts/                  # DB user seeding & check utilities
 │   └── .env.example              # Sample environment configuration
-├── Frontend/react/               # React 19 SPA (Vite)
+├── Frontend/                     # React 19 SPA (Vite)
 │   ├── index.html                # Main HTML entry point
 │   ├── vite.config.js            # Vite configuration
 │   └── src/
@@ -110,7 +110,7 @@ The server will run at `http://localhost:5000`.
 Open a new terminal window:
 ```bash
 # Navigate to Frontend directory
-cd Frontend/react
+cd Frontend
 
 # Install dependencies
 npm install
@@ -126,13 +126,13 @@ The application will be accessible at `http://localhost:5174`.
 
 ### Run Frontend Linter
 ```bash
-cd Frontend/react
+cd Frontend
 npm run lint
 ```
 
 ### Build Production Bundle
 ```bash
-cd Frontend/react
+cd Frontend
 npm run build
 ```
 

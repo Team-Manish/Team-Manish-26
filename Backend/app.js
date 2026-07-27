@@ -20,7 +20,9 @@ const progressRouter = require("./routes/progress");
 
 dotenv.config();
 
-connectDB();
+connectDB().catch((err) => {
+  console.error("Initial MongoDB Connection Rejection:", err.message);
+});
 
 var app = express();
 
@@ -84,7 +86,7 @@ app.use(logger("dev"));
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, "public")));
-const frontendDistPath = path.join(__dirname, "../Frontend/react/dist");
+const frontendDistPath = path.join(__dirname, "../Frontend/dist");
 app.use(express.static(frontendDistPath));
 
 app.use("/students", studentsRouter);

@@ -29,36 +29,35 @@ Total
 │   ├── package-lock.json
 │   └── package.json
 ├── Frontend
-│   └── react
-│       ├── public
-│       │   ├── favicon.svg
-│       │   └── icons.svg
-│       ├── src
-│       │   ├── assets
-│       │   │   ├── hero.png
-│       │   │   ├── react.svg
-│       │   │   └── vite.svg
-│       │   ├── auth
-│       │   │   ├── AuthContext.jsx
-│       │   │   ├── PrivateRoute.jsx
-│       │   │   └── authService.js
-│       │   ├── components
-│       │   │   ├── Dashboard.css
-│       │   │   ├── Dashboard.jsx
-│       │   │   ├── Login.css
-│       │   │   ├── Login.jsx
-│       │   │   ├── StudentCard.jsx
-│       │   │   └── StudentForm.jsx
-│       │   ├── App.css
-│       │   ├── App.jsx
-│       │   ├── index.css
-│       │   └── main.jsx
-│       ├── .gitignore
-│       ├── .oxlintrc.json
-│       ├── README.md
-│       ├── index.html
-│       ├── package-lock.json
-│       ├── package.json
-│       └── vite.config.js
+│   ├── public
+│   │   ├── favicon.svg
+│   │   └── icons.svg
+│   ├── src
+│   │   ├── assets
+│   │   │   ├── hero.png
+│   │   │   ├── react.svg
+│   │   │   └── vite.svg
+│   │   ├── auth
+│   │   │   ├── AuthContext.jsx
+│   │   │   ├── PrivateRoute.jsx
+│   │   │   └── authService.js
+│   │   ├── components
+│   │   │   ├── Dashboard.css
+│   │   │   ├── Dashboard.jsx
+│   │   │   ├── Login.css
+│   │   │   ├── Login.jsx
+│   │   │   ├── StudentCard.jsx
+│   │   │   └── StudentForm.jsx
+│   │   ├── App.css
+│   │   ├── App.jsx
+│   │   ├── index.css
+│   │   └── main.jsx
+│   ├── .gitignore
+│   ├── .oxlintrc.json
+│   ├── README.md
+│   ├── index.html
+│   ├── package-lock.json
+│   ├── package.json
+│   └── vite.config.js
 ├── .gitignore
 └── README.md

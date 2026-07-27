@@ -1,4 +1,11 @@
-const BASE_ORIGIN = typeof window !== "undefined" ? window.location.origin : "http://localhost:5000";
+const getBackendOrigin = () => {
+  if (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_BACKEND_URL) {
+    return import.meta.env.VITE_BACKEND_URL;
+  }
+  return typeof window !== "undefined" ? window.location.origin : "http://localhost:5000";
+};
+
+const BASE_ORIGIN = getBackendOrigin();
 const API_ROOT = `${BASE_ORIGIN}/api`;
 const API_BASE_URL = `${API_ROOT}/auth`;
 

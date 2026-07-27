@@ -368,12 +368,12 @@ function Login() {
           </div>
         )}
 
-        {/* Core Parent Login Form */}
+        {/* Core Login Form */}
         <form onSubmit={handleSubmit} noValidate className="login-form">
           {/* Email Input Field */}
           <div className={`form-group ${emailError ? "has-error" : isEmailValid ? "is-valid" : ""}`}>
             <div className="label-row">
-              <label htmlFor="parent-email">Parent Email Address</label>
+              <label htmlFor="login-email">{activeRole.charAt(0).toUpperCase() + activeRole.slice(1)} Email Address</label>
               {isEmailValid && (
                 <span className="valid-badge" aria-hidden="true">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
@@ -394,13 +394,13 @@ function Login() {
 
               <input
                 ref={emailInputRef}
-                id="parent-email"
+                id="login-email"
                 type="email"
                 name="email"
                 value={email}
                 onChange={handleEmailChange}
                 onBlur={handleEmailBlur}
-                placeholder="Parent email address"
+                placeholder={`${activeRole.charAt(0).toUpperCase() + activeRole.slice(1)} email address`}
                 autoComplete="email"
                 required
                 aria-invalid={!!emailError}
@@ -411,7 +411,7 @@ function Login() {
 
             {!emailError && (
               <small id="email-helper-text" className="helper-text">
-                Enter the email address registered with your school district.
+                Enter the email address registered with your account.
               </small>
             )}
 
@@ -430,7 +430,7 @@ function Login() {
           {/* Password Input Field */}
           <div className={`form-group ${passwordError ? "has-error" : ""}`}>
             <div className="label-row">
-              <label htmlFor="parent-password">Your Account Password</label>
+              <label htmlFor="login-password">Your Account Password</label>
               <span className="char-count" aria-live="polite">
                 {password.length >= 8 ? "✓ Min 8 chars" : `${password.length}/8 min chars`}
               </span>
@@ -445,18 +445,17 @@ function Login() {
               </span>
 
               <input
-                id="parent-password"
+                id="login-password"
                 type={showPassword ? "text" : "password"}
                 name="password"
                 value={password}
                 onChange={handlePasswordChange}
                 onBlur={handlePasswordBlur}
-                placeholder="Your account password"
+                placeholder="Enter your password"
                 autoComplete="current-password"
-                minLength={8}
                 required
                 aria-invalid={!!passwordError}
-                aria-describedby={passwordError ? "password-error-msg" : "password-hint-text"}
+                aria-describedby={passwordError ? "password-error-msg" : undefined}
                 disabled={isSubmitting || authLoading}
               />
 
@@ -464,33 +463,15 @@ function Login() {
                 type="button"
                 className="toggle-password-btn"
                 onClick={() => setShowPassword(!showPassword)}
-                disabled={isSubmitting || authLoading}
-                aria-label={showPassword ? "Hide password text" : "Show password text"}
+                aria-label={showPassword ? "Hide password string text" : "Show password string text"}
                 title={showPassword ? "Hide password" : "Show password"}
+                disabled={isSubmitting || authLoading}
               >
-                {showPassword ? (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-                    <line x1="1" y1="1" x2="23" y2="23"></line>
-                  </svg>
-                ) : (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                    <circle cx="12" cy="12" r="3"></circle>
-                  </svg>
-                )}
-                <span className="sr-only">
-                  {showPassword ? "Hide password text" : "Show password text"}
-                </span>
+                {showPassword ? "🙈" : "👁️"}
               </button>
             </div>
 
-            {/* Forgot Password Link & Helper */}
             <div className="password-options-row">
-              <div id="password-hint-text" className="helper-text">
-                Password must be at least 8 characters.
-              </div>
-
               <button
                 type="button"
                 className="forgot-password-link"
@@ -542,11 +523,11 @@ function Login() {
             {isSubmitting || authLoading ? (
               <span className="button-loading-state">
                 <span className="btn-spinner" aria-hidden="true"></span>
-                <span>Authenticating Parent Account...</span>
+                <span>Authenticating {activeRole.charAt(0).toUpperCase() + activeRole.slice(1)} Account...</span>
               </span>
             ) : (
               <span className="button-normal-state">
-                <span>Sign In to Parent Portal</span>
+                <span>Sign In to {currentConfig.tag}</span>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <line x1="5" y1="12" x2="19" y2="12"></line>
                   <polyline points="12 5 19 12 12 19"></polyline>
@@ -557,8 +538,8 @@ function Login() {
         </form>
 
         {/* Prospective Student Self-Registration Section */}
-        <div style={{ marginTop: "16px", paddingTop: "16px", borderTop: "1px dashed #e2e8f0", textAlign: "center" }}>
-          <p style={{ fontSize: "14px", color: "#64748b", margin: 0 }}>
+        <div style={{ marginTop: "16px", paddingTop: "16px", borderTop: "1px dashed var(--color-border)", textAlign: "center" }}>
+          <p style={{ fontSize: "14px", color: "var(--color-text-muted)", margin: 0 }}>
             New Student?{" "}
             <button
               type="button"
@@ -566,7 +547,7 @@ function Login() {
               style={{
                 background: "none",
                 border: "none",
-                color: "#2563eb",
+                color: "var(--color-primary)",
                 fontWeight: "700",
                 cursor: "pointer",
                 textDecoration: "underline",

@@ -137,86 +137,92 @@ const AdminDashboard = () => {
         </div>
 
         {showTeacherForm && (
-          <form onSubmit={handleRegisterTeacherSubmit} style={{ background: "var(--color-input-bg)", padding: "20px", borderRadius: "12px", border: "1px solid var(--color-border)", marginTop: "16px" }}>
+          <form onSubmit={handleRegisterTeacherSubmit} style={{ background: "var(--color-card-bg)", padding: "20px", borderRadius: "12px", border: "1px solid var(--color-border)", marginTop: "16px" }}>
             {regError && (
-              <div style={{ padding: "10px", background: "#fef2f2", color: "#991b1b", borderRadius: "6px", marginBottom: "12px", fontSize: "13px" }}>
+              <div style={{ padding: "10px 14px", background: "var(--color-error-bg)", color: "var(--color-error-text)", border: "1px solid var(--color-error-border)", borderRadius: "8px", marginBottom: "12px", fontSize: "13px" }}>
                 <strong>Registration Error:</strong> {regError}
               </div>
             )}
             {regSuccess && (
-              <div style={{ padding: "10px", background: "#f0fdf4", color: "#166534", borderRadius: "6px", marginBottom: "12px", fontSize: "13px" }}>
+              <div style={{ padding: "10px 14px", background: "var(--color-success-bg)", color: "var(--color-success-text)", border: "1px solid var(--color-success-text)", borderRadius: "8px", marginBottom: "12px", fontSize: "13px" }}>
                 {regSuccess}
               </div>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px", marginBottom: "12px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "14px", marginBottom: "16px" }}>
               <div>
-                <label style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px" }}>Teacher Full Name *</label>
+                <label htmlFor="admin-teacher-name" style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px", color: "var(--color-text-main)" }}>Teacher Full Name *</label>
                 <input
+                  id="admin-teacher-name"
                   type="text"
                   required
                   value={tName}
                   onChange={(e) => setTName(e.target.value)}
                   placeholder="e.g. Dr. Eleanor Vance"
-                  style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--color-border)" }}
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--color-border)", background: "var(--color-input-bg)", color: "var(--color-text-main)" }}
                 />
               </div>
 
               <div>
-                <label style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px" }}>Email Address *</label>
+                <label htmlFor="admin-teacher-email" style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px", color: "var(--color-text-main)" }}>Email Address *</label>
                 <input
+                  id="admin-teacher-email"
                   type="email"
                   required
                   value={tEmail}
                   onChange={(e) => setTEmail(e.target.value)}
                   placeholder="e.g. eleanor.vance@school.com"
-                  style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--color-border)" }}
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--color-border)", background: "var(--color-input-bg)", color: "var(--color-text-main)" }}
                 />
               </div>
 
               <div>
-                <label style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px" }}>Username</label>
+                <label htmlFor="admin-teacher-username" style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px", color: "var(--color-text-main)" }}>Username</label>
                 <input
+                  id="admin-teacher-username"
                   type="text"
                   value={tUsername}
                   onChange={(e) => setTUsername(e.target.value)}
                   placeholder="e.g. evance"
-                  style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--color-border)" }}
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--color-border)", background: "var(--color-input-bg)", color: "var(--color-text-main)" }}
                 />
               </div>
 
               <div>
-                <label style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px" }}>Teacher ID</label>
+                <label htmlFor="admin-teacher-id" style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px", color: "var(--color-text-main)" }}>Teacher ID</label>
                 <input
+                  id="admin-teacher-id"
                   type="text"
                   value={tUserId}
                   onChange={(e) => setTUserId(e.target.value)}
                   placeholder="e.g. TCH-2005"
-                  style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--color-border)" }}
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--color-border)", background: "var(--color-input-bg)", color: "var(--color-text-main)" }}
                 />
               </div>
 
               <div>
-                <label style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px" }}>Password * (min 8 chars)</label>
+                <label htmlFor="admin-teacher-password" style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px", color: "var(--color-text-main)" }}>Password * (min 8 chars)</label>
                 <input
+                  id="admin-teacher-password"
                   type="password"
                   required
                   minLength={8}
                   value={tPassword}
                   onChange={(e) => setTPassword(e.target.value)}
                   placeholder="••••••••"
-                  style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--color-border)" }}
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--color-border)", background: "var(--color-input-bg)", color: "var(--color-text-main)" }}
                 />
               </div>
 
               <div>
-                <label style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px" }}>Department</label>
+                <label htmlFor="admin-teacher-dept" style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px", color: "var(--color-text-main)" }}>Department</label>
                 <input
+                  id="admin-teacher-dept"
                   type="text"
                   value={tDepartment}
                   onChange={(e) => setTDepartment(e.target.value)}
                   placeholder="Computer Science"
-                  style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--color-border)" }}
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--color-border)", background: "var(--color-input-bg)", color: "var(--color-text-main)" }}
                 />
               </div>
             </div>
@@ -224,8 +230,9 @@ const AdminDashboard = () => {
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
               <button
                 type="submit"
+                className="btn-primary"
                 disabled={isSubmitting}
-                style={{ padding: "8px 20px", background: "var(--color-primary)", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "600", cursor: "pointer" }}
+                style={{ padding: "10px 20px" }}
               >
                 {isSubmitting ? "Registering Teacher..." : "Register Teacher Account"}
               </button>

@@ -19,6 +19,12 @@
   border-radius: 16px;
   box-shadow: var(--shadow-card);
   margin-bottom: 24px;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.dashboard-header:hover {
+  border-color: var(--color-border-hover);
+  box-shadow: var(--shadow-card-hover);
 }
 
 .dashboard-tabs {
@@ -38,17 +44,21 @@
   color: var(--color-text-muted);
   cursor: pointer;
   border-bottom: 3px solid transparent;
-  transition: all 0.2s ease-in-out;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   margin-bottom: -4px;
+  border-radius: 6px 6px 0 0;
 }
 
 .tab-btn:hover {
   color: var(--color-primary);
+  background: var(--color-primary-light);
+  transform: translateY(-1px);
 }
 
 .tab-btn.active-tab {
   color: var(--color-primary);
   border-bottom-color: var(--color-primary);
+  background: var(--color-primary-light);
 }
 
 .header-title h1 {
@@ -72,12 +82,14 @@
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s ease, transform 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(229, 62, 62, 0.25);
 }
 
 .logout-btn:hover:not(:disabled) {
   background: #c53030;
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(229, 62, 62, 0.4);
 }
 
 .logout-btn:disabled {
@@ -94,15 +106,15 @@
 }
 
 .alert-error {
-  background: #fff5f5;
-  border: 1px solid #feb2b2;
-  color: #c53030;
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  color: var(--color-error-text);
 }
 
 .alert-success {
-  background: #f0fff4;
-  border: 1px solid #9ae6b4;
-  color: #276749;
+  background: var(--color-success-bg);
+  border: 1px solid var(--color-success-text);
+  color: var(--color-success-text);
 }
 
 .dashboard-grid {
@@ -113,16 +125,23 @@
 }
 
 .student-form {
-  background: white;
+  background: var(--color-card-bg);
   padding: 24px;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  border-radius: 16px;
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--color-border);
+  transition: all 0.25s ease;
+}
+
+.student-form:hover {
+  border-color: var(--color-border-hover);
+  box-shadow: var(--shadow-card-hover);
 }
 
 .student-form h3 {
   margin-top: 0;
   margin-bottom: 20px;
-  color: #2d3748;
+  color: var(--color-text-main);
 }
 
 .form-field {
@@ -132,7 +151,7 @@
 .form-field label {
   display: block;
   margin-bottom: 6px;
-  color: #4a5568;
+  color: var(--color-text-main);
   font-weight: 600;
   font-size: 14px;
 }
@@ -140,17 +159,23 @@
 .form-field input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #cbd5e0;
-  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-input-bg);
+  color: var(--color-text-main);
+  border-radius: 8px;
   font-size: 14px;
   box-sizing: border-box;
-  transition: border-color 0.2s ease;
+  transition: all 0.25s ease;
+}
+
+.form-field input:hover:not(:disabled) {
+  border-color: var(--color-border-hover);
 }
 
 .form-field input:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+  border-color: var(--color-border-focus);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
 }
 
 .form-actions {
@@ -162,30 +187,37 @@
 .btn-primary {
   flex: 1;
   padding: 12px;
-  background: #667eea;
+  background: var(--color-primary);
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--shadow-btn);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #5a67d8;
+  background: var(--color-primary-hover);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-btn-hover);
 }
 
 .btn-secondary {
   padding: 12px 16px;
-  background: #e2e8f0;
-  color: #4a5568;
-  border: none;
-  border-radius: 6px;
+  background: var(--color-input-bg);
+  color: var(--color-text-main);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: #cbd5e0;
+  background: var(--color-border);
+  border-color: var(--color-border-hover);
+  transform: translateY(-1px);
 }
 
 .section-header {
@@ -198,16 +230,17 @@
 .section-header h2 {
   margin: 0;
   font-size: 20px;
-  color: #2d3748;
+  color: var(--color-text-main);
 }
 
 .count-badge {
-  background: #edf2f7;
-  color: #4a5568;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
   padding: 4px 12px;
   border-radius: 12px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
+  border: 1px solid var(--color-border);
 }
 
 .student-cards-grid {
@@ -217,26 +250,33 @@
 }
 
 .student-card {
-  background: white;
+  background: var(--color-card-bg);
   padding: 20px;
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.student-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--color-primary);
 }
 
 .student-card-header h3 {
   margin: 0 0 10px 0;
   font-size: 18px;
-  color: #1a202c;
+  color: var(--color-text-main);
 }
 
 .student-card-body p {
   margin: 6px 0;
   font-size: 14px;
-  color: #4a5568;
+  color: var(--color-text-muted);
 }
 
 .student-card-actions {
@@ -247,49 +287,69 @@
 
 .btn-edit {
   flex: 1;
-  padding: 8px;
-  background: #edf2f7;
-  color: #2b6cb0;
-  border: 1px solid #bee3f8;
-  border-radius: 6px;
+  padding: 8px 12px;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  border-radius: 8px;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.25s ease;
 }
 
 .btn-edit:hover:not(:disabled) {
-  background: #ebf8ff;
+  background: var(--color-primary);
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
 }
 
 .btn-delete {
   flex: 1;
-  padding: 8px;
-  background: #fff5f5;
-  color: #c53030;
-  border: 1px solid #fed7d7;
-  border-radius: 6px;
+  padding: 8px 12px;
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+  border: 1px solid var(--color-error-border);
+  border-radius: 8px;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.25s ease;
 }
 
 .btn-delete:hover:not(:disabled) {
-  background: #ffe3e3;
+  background: var(--color-error-icon);
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
 }
 
 .empty-state {
-  background: white;
+  background: var(--color-card-bg);
+  border: 1px dashed var(--color-border);
   padding: 40px;
   text-align: center;
-  border-radius: 10px;
-  color: #718096;
+  border-radius: 14px;
+  color: var(--color-text-muted);
 }
 
 .loading-spinner {
-  background: white;
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
   padding: 30px;
   text-align: center;
-  border-radius: 10px;
-  color: #667eea;
-  font-weight: 500;
+  border-radius: 14px;
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.tab-btn-chip {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tab-btn-chip:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.25) !important;
 }
 
 @media (max-width: 840px) {

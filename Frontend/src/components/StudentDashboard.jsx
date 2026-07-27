@@ -108,6 +108,7 @@ const StudentDashboard = () => {
           <button
             key={sub.id}
             type="button"
+            className="tab-btn-chip"
             onClick={() => setSelectedSubject(sub.name)}
             style={{
               padding: "10px 18px",
@@ -117,7 +118,8 @@ const StudentDashboard = () => {
               color: selectedSubject === sub.name ? "var(--color-primary)" : "var(--color-text-main)",
               fontWeight: "600",
               cursor: "pointer",
-              transition: "all 0.2s ease",
+              transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+              boxShadow: selectedSubject === sub.name ? "0 4px 12px rgba(99, 102, 241, 0.2)" : "none",
             }}
           >
             {sub.name} ({sub.grade})

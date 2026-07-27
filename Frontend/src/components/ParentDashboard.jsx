@@ -102,6 +102,7 @@ const ParentDashboard = () => {
             <button
               key={child.id}
               type="button"
+              className="tab-btn-chip"
               onClick={() => setSelectedChildId(child.id)}
               style={{
                 padding: "12px 20px",
@@ -111,10 +112,11 @@ const ParentDashboard = () => {
                 color: selectedChildId === child.id ? "var(--color-primary)" : "var(--color-text-main)",
                 fontWeight: "bold",
                 cursor: "pointer",
-                transition: "all 0.2s ease",
+                transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
                 display: "flex",
                 alignItems: "center",
                 gap: "8px",
+                boxShadow: selectedChildId === child.id ? "0 4px 12px rgba(99, 102, 241, 0.2)" : "none",
               }}
             >
               <span>👤 {child.name}</span>

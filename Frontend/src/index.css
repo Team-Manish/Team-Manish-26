@@ -20,9 +20,13 @@
   --color-success-text: #16a34a;
   --color-success-bg: #f0fdf4;
   --color-input-bg: #ffffff;
+  --color-table-row-hover: #f8fafc;
+  --color-modal-overlay: rgba(15, 23, 42, 0.65);
   --shadow-card: 0 20px 40px -15px rgba(15, 23, 42, 0.08), 0 0 1px 1px rgba(15, 23, 42, 0.05);
+  --shadow-card-hover: 0 25px 45px -12px rgba(15, 23, 42, 0.15), 0 0 2px 1px rgba(79, 70, 229, 0.15);
   --shadow-btn: 0 4px 14px rgba(79, 70, 229, 0.35);
   --shadow-btn-hover: 0 6px 20px rgba(79, 70, 229, 0.45);
+  --transition-smooth: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 [data-theme="dark"] {
@@ -46,9 +50,17 @@
   --color-success-text: #4ade80;
   --color-success-bg: #052e16;
   --color-input-bg: #0f172a;
+  --color-table-row-hover: #334155;
+  --color-modal-overlay: rgba(0, 0, 0, 0.75);
   --shadow-card: 0 20px 40px -15px rgba(0, 0, 0, 0.5), 0 0 1px 1px rgba(255, 255, 255, 0.05);
+  --shadow-card-hover: 0 25px 45px -12px rgba(0, 0, 0, 0.7), 0 0 2px 1px rgba(129, 140, 248, 0.25);
   --shadow-btn: 0 4px 14px rgba(99, 102, 241, 0.4);
   --shadow-btn-hover: 0 6px 20px rgba(129, 140, 248, 0.5);
+  --transition-smooth: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
@@ -57,6 +69,35 @@ body {
   color: var(--color-text-main);
   margin: 0;
   padding: 0;
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition: background 0.3s ease, color 0.3s ease;
   min-height: 100vh;
+}
+
+/* Global Interactive Element Hover & Transition Styles */
+button,
+a,
+input,
+select,
+textarea,
+[role="button"],
+[role="tab"] {
+  transition: var(--transition-smooth);
+}
+
+button,
+a,
+[role="button"],
+[role="tab"] {
+  cursor: pointer;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible,
+[role="tab"]:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
 }

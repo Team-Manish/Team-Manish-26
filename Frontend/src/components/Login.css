@@ -63,7 +63,8 @@
 .role-selector-tabs {
   display: flex;
   gap: 6px;
-  background: #f1f5f9;
+  background: var(--color-input-bg, #f1f5f9);
+  border: 1px solid var(--color-border);
   padding: 4px;
   border-radius: 14px;
   margin-bottom: 24px;
@@ -77,21 +78,22 @@
   border-radius: 10px;
   font-size: 13px;
   font-weight: 600;
-  color: #64748b;
+  color: var(--color-text-muted);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   white-space: nowrap;
 }
 
 .role-tab:hover {
-  color: #0f172a;
-  background: rgba(255, 255, 255, 0.5);
+  color: var(--color-text-main);
+  background: var(--color-primary-light);
+  transform: translateY(-1px);
 }
 
 .role-tab-active {
-  background: #ffffff !important;
-  color: #4f46e5 !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  background: var(--color-card-bg) !important;
+  color: var(--color-primary) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 [data-theme="dark"] .login-card-wrapper {
@@ -99,21 +101,21 @@
 }
 
 [data-theme="dark"] .role-selector-tabs {
-  background: #0f172a;
+  background: var(--color-input-bg);
 }
 
 [data-theme="dark"] .role-tab {
-  color: #94a3b8;
+  color: var(--color-text-muted);
 }
 
 [data-theme="dark"] .role-tab:hover {
-  color: #f8fafc;
-  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text-main);
+  background: var(--color-primary-light);
 }
 
 [data-theme="dark"] .role-tab-active {
-  background: #334155 !important;
-  color: #818cf8 !important;
+  background: var(--color-card-bg) !important;
+  color: var(--color-primary) !important;
 }
 
 [data-theme="dark"] .form-input {
@@ -171,8 +173,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  background: #f8fafc;
-  border: 1px dashed #cbd5e1;
+  background: var(--color-input-bg);
+  border: 1px dashed var(--color-border);
   padding: 8px 12px;
   border-radius: 12px;
   margin-bottom: 24px;
@@ -182,23 +184,26 @@
 .demo-presets-label {
   font-size: 12px;
   font-weight: 600;
-  color: #475569;
+  color: var(--color-text-muted);
 }
 
 .demo-chip {
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-main);
   border-radius: 6px;
   padding: 4px 8px;
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
   min-height: 28px;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
 }
 
 .demo-chip:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  border-color: var(--color-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .chip-success {
@@ -334,9 +339,9 @@
   border-radius: var(--radius-input);
   font-size: 16px; /* Prevents auto-zoom on iOS Safari */
   color: var(--color-text-main);
-  background: #ffffff;
+  background: var(--color-input-bg);
   box-sizing: border-box;
-  transition: all 0.2s ease;
+  transition: all 0.25s ease;
 }
 
 .password-input-wrapper input {
@@ -350,12 +355,12 @@
 .form-group input:focus {
   outline: none;
   border-color: var(--color-border-focus);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
 }
 
 .form-group.has-error input {
   border-color: var(--color-error-icon);
-  background: #fffafa;
+  background: var(--color-error-bg);
 }
 
 .form-group.has-error input:focus {
@@ -490,7 +495,7 @@
   height: 22px;
   border: 1.5px solid var(--color-border);
   border-radius: 6px;
-  background: #ffffff;
+  background: var(--color-input-bg);
   display: flex;
   align-items: center;
   justify-content: center;

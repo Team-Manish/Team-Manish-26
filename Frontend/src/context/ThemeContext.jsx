@@ -9,10 +9,10 @@ export const ThemeProvider = ({ children }) => {
     if (savedTheme === "dark" || savedTheme === "light") {
       return savedTheme;
     }
-    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      return "dark";
+    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) {
+      return "light";
     }
-    return "light";
+    return "dark";
   });
 
   useEffect(() => {

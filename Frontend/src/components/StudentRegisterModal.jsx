@@ -75,144 +75,154 @@ function StudentRegisterModal({ isOpen, onClose }) {
           </button>
         </header>
 
-        <p style={{ color: "#64748b", fontSize: "14px", marginBottom: "16px" }}>
+        <p style={{ color: "var(--color-text-muted)", fontSize: "14px", marginBottom: "16px" }}>
           Prospective students: create your account below. Your profile will be accessible to assigned educators.
         </p>
 
         {errorMsg && (
-          <div style={{ padding: "10px", background: "#fef2f2", color: "#991b1b", borderRadius: "6px", marginBottom: "14px", fontSize: "13px" }}>
+          <div style={{ padding: "10px", background: "var(--color-error-bg)", color: "var(--color-error-text)", border: "1px solid var(--color-error-border)", borderRadius: "6px", marginBottom: "14px", fontSize: "13px" }}>
             <strong>Registration Error:</strong> {errorMsg}
           </div>
         )}
 
         {successMsg && (
-          <div style={{ padding: "10px", background: "#f0fdf4", color: "#166534", borderRadius: "6px", marginBottom: "14px", fontSize: "13px" }}>
+          <div style={{ padding: "10px", background: "var(--color-success-bg)", color: "var(--color-success-text)", border: "1px solid var(--color-success-text)", borderRadius: "6px", marginBottom: "14px", fontSize: "13px" }}>
             {successMsg}
           </div>
         )}
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           <div>
-            <label style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px" }}>
+            <label htmlFor="reg-name" style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px", color: "var(--color-text-main)" }}>
               Full Name *
             </label>
             <input
+              id="reg-name"
               type="text"
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Alex Johnson"
-              style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+              style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--color-border)", background: "var(--color-input-bg)", color: "var(--color-text-main)" }}
             />
           </div>
 
           <div>
-            <label style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px" }}>
+            <label htmlFor="reg-email" style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px", color: "var(--color-text-main)" }}>
               Email Address *
             </label>
             <input
+              id="reg-email"
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="e.g. alex.johnson@student.com"
-              style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+              style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--color-border)", background: "var(--color-input-bg)", color: "var(--color-text-main)" }}
             />
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
             <div>
-              <label style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px" }}>
+              <label htmlFor="reg-username" style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px", color: "var(--color-text-main)" }}>
                 Username (Optional)
               </label>
               <input
+                id="reg-username"
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="e.g. alex_j"
-                style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--color-border)", background: "var(--color-input-bg)", color: "var(--color-text-main)" }}
               />
             </div>
             <div>
-              <label style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px" }}>
+              <label htmlFor="reg-user-id" style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px", color: "var(--color-text-main)" }}>
                 Student ID (Optional)
               </label>
               <input
+                id="reg-user-id"
                 type="text"
                 value={userId}
                 onChange={(e) => setUserId(e.target.value)}
                 placeholder="e.g. STU-1001"
-                style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--color-border)", background: "var(--color-input-bg)", color: "var(--color-text-main)" }}
               />
             </div>
           </div>
 
           <div>
-            <label style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px" }}>
+            <label htmlFor="reg-password" style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px", color: "var(--color-text-main)" }}>
               Password * (min 8 chars)
             </label>
             <input
+              id="reg-password"
               type="password"
               required
               minLength={8}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+              style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--color-border)", background: "var(--color-input-bg)", color: "var(--color-text-main)" }}
             />
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "10px" }}>
             <div>
-              <label style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px" }}>
+              <label htmlFor="reg-age" style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px", color: "var(--color-text-main)" }}>
                 Age
               </label>
               <input
+                id="reg-age"
                 type="number"
                 value={age}
                 onChange={(e) => setAge(e.target.value)}
-                style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--color-border)", background: "var(--color-input-bg)", color: "var(--color-text-main)" }}
               />
             </div>
             <div>
-              <label style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px" }}>
+              <label htmlFor="reg-subjects" style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px", color: "var(--color-text-main)" }}>
                 Enrolled Subjects (comma-separated)
               </label>
               <input
+                id="reg-subjects"
                 type="text"
                 value={enrolledSubjects}
                 onChange={(e) => setEnrolledSubjects(e.target.value)}
                 placeholder="Computer Science, Math"
-                style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--color-border)", background: "var(--color-input-bg)", color: "var(--color-text-main)" }}
               />
             </div>
           </div>
 
           <div>
-            <label style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px" }}>
+            <label htmlFor="reg-teacher-id" style={{ fontSize: "13px", fontWeight: "600", display: "block", marginBottom: "4px", color: "var(--color-text-main)" }}>
               Assigned Teacher User ID (Optional)
             </label>
             <input
+              id="reg-teacher-id"
               type="text"
               value={assignedTeacherId}
               onChange={(e) => setAssignedTeacherId(e.target.value)}
               placeholder="e.g. TCH-2001"
-              style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+              style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--color-border)", background: "var(--color-input-bg)", color: "var(--color-text-main)" }}
             />
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "12px" }}>
             <button
               type="button"
+              className="btn-secondary"
               onClick={onClose}
-              style={{ padding: "8px 16px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", cursor: "pointer" }}
+              style={{ padding: "10px 20px" }}
             >
               Cancel
             </button>
             <button
               type="submit"
+              className="btn-primary"
               disabled={isSubmitting}
-              style={{ padding: "8px 16px", borderRadius: "6px", border: "none", background: "#2563eb", color: "#fff", fontWeight: "600", cursor: "pointer" }}
+              style={{ padding: "10px 20px" }}
             >
               {isSubmitting ? "Creating Account..." : "Register Account"}
             </button>

@@ -38,8 +38,6 @@ export const fetchCsrfToken = async () => {
 
 /**
  * Comprehensive Login API Function
- * Sends POST request to /api/auth/login with request timeouts, CSRF tokens,
- * and comprehensive HTTP status error handling.
  */
 export const login = async (email, password, externalSignal) => {
   let token = "demo-csrf-token";
@@ -49,10 +47,8 @@ export const login = async (email, password, externalSignal) => {
     console.warn("CSRF retrieval warning:", err.message);
   }
 
-  // Setup 10-second timeout controller combined with external signal if provided
   const timeoutController = new AbortController();
   const timeoutId = setTimeout(() => timeoutController.abort(), 10000);
-
   const activeSignal = externalSignal || timeoutController.signal;
 
   try {
@@ -71,7 +67,6 @@ export const login = async (email, password, externalSignal) => {
 
     const data = await response.json().catch(() => ({}));
 
-    // Success response management (200 OK)
     if (response.ok && data.success) {
       currentUser = data.user;
       return {
@@ -80,7 +75,6 @@ export const login = async (email, password, externalSignal) => {
       };
     }
 
-    // HTTP Status Code Specific Error Handling
     if (response.status === 400) {
       const msg = data.errors ? data.errors.map(e => e.message).join(", ") : (data.message || "Invalid input data submitted.");
       throw new Error(msg);
@@ -110,11 +104,8 @@ export const login = async (email, password, externalSignal) => {
       throw new Error("Login request timed out or was cancelled. Please check your internet connection.");
     }
 
-    // Offline / Standalone Demo Fallback Handling when Express API server is not running
     if (error.name === "TypeError" || error.message.includes("fetch") || error.message.includes("Network")) {
-      console.info("Express auth API unreachable. Engaging offline parent demo session.");
-
-      // Simulate network latency
+      console.info("Express auth API unreachable. Engaging offline demo session.");
       await new Promise((res) => setTimeout(res, 600));
 
       if (email.toLowerCase() === "invalid@parent.com") {
@@ -144,6 +135,114 @@ export const login = async (email, password, externalSignal) => {
 
     throw error;
   }
+};
+
+/**
+ * Student Self-Registration API Call
+ */
+export const registerStudent = async (studentData) => {
+  const token = await fetchCsrfToken();
+  const response = await fetch(`${API_BASE_URL}/register-student`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-XSRF-TOKEN": token,
+    },
+    credentials: "include",
+    body: JSON.stringify(studentData),
+  });
+
+  const data = await response.json();
+  if (!response.ok || !data.success) {
+    throw new Error(data.message || "Student self-registration failed.");
+  }
+  return data;
+};
+
+/**
+ * Admin Teacher Registration API Call
+ */
+export const registerTeacher = async (teacherData) => {
+  const token = await fetchCsrfToken();
+  const response = await fetch(`${API_BASE_URL}/admin/register-teacher`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-XSRF-TOKEN": token,
+    },
+    credentials: "include",
+    body: JSON.stringify(teacherData),
+  });
+
+  const data = await response.json();
+  if (!response.ok || !data.success) {
+    throw new Error(data.message || "Teacher registration failed.");
+  }
+  return data;
+};
+
+/**
+ * Get Teacher Profiles (Admin only)
+ */
+export const getTeacherProfiles = async () => {
+  const response = await fetch(`${API_ROOT}/admin/teachers`, {
+    credentials: "include",
+  });
+  const data = await response.json();
+  if (!response.ok || !data.success) {
+    throw new Error(data.message || "Failed to retrieve teacher profiles.");
+  }
+  return data.teachers;
+};
+
+/**
+ * Get Assigned Students (Teacher)
+ */
+export const getAssignedStudents = async () => {
+  const response = await fetch(`${API_ROOT}/teacher/students`, {
+    credentials: "include",
+  });
+  const data = await response.json();
+  if (!response.ok || !data.success) {
+    throw new Error(data.message || "Failed to retrieve assigned students.");
+  }
+  return data.students;
+};
+
+/**
+ * Update Assigned Student Details (Teacher)
+ */
+export const updateAssignedStudent = async (studentId, updateData) => {
+  const token = await fetchCsrfToken();
+  const response = await fetch(`${API_ROOT}/teacher/students/${encodeURIComponent(studentId)}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      "X-XSRF-TOKEN": token,
+    },
+    credentials: "include",
+    body: JSON.stringify(updateData),
+  });
+
+  const data = await response.json();
+  if (!response.ok || !data.success) {
+    throw new Error(data.message || "Failed to update student details.");
+  }
+  return data.student;
+};
+
+/**
+ * Get Linked Child Academic Progress (Parent)
+ */
+export const getChildProgress = async (studentId) => {
+  const response = await fetch(`${API_ROOT}/parent/child-progress/${encodeURIComponent(studentId)}`, {
+    credentials: "include",
+  });
+  const data = await response.json();
+  if (!response.ok || !data.success) {
+    throw new Error(data.message || "Failed to retrieve child progress.");
+  }
+  return data;
 };
 
 /**
@@ -191,3 +290,4 @@ export const checkSession = async () => {
 
 export const getCurrentUser = () => currentUser;
 export const isAuthenticated = () => !!currentUser;
+

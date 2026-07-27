@@ -1,9 +1,11 @@
 const express = require("express");
 const router = express.Router();
 const { authorize } = require("../middleware/rbac");
+const Student = require("../models/Student");
+const User = require("../models/User");
+const AcademicProgress = require("../models/AcademicProgress");
 
 // Restrict all routes in this router exclusively to verified parent user accounts
-// Custom role hierarchy ensures cross-role access from teacher or standard user roles is strictly blocked
 router.use(authorize("parent", {
   roleHierarchy: {
     parent: ["parent"],
@@ -12,16 +14,79 @@ router.use(authorize("parent", {
 }));
 
 // GET /api/parent/children - Parent Children Dashboard
-router.get("/children", (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: "Parent Portal: Children Summary",
-    user: req.user,
-    children: [
-      { id: "STU-101", name: "Alex Smith", grade: "10th Grade", gpa: "3.8" },
-      { id: "STU-102", name: "Emma Smith", grade: "7th Grade", gpa: "3.9" },
-    ],
-  });
+router.get("/children", async (req, res) => {
+  try {
+    const parentUser = req.user;
+    const isParent = parentUser.role === "parent";
+
+    let filter = {};
+    if (isParent) {
+      const linkedList = Array.isArray(parentUser.linkedStudentIds) ? parentUser.linkedStudentIds : [];
+      filter = { studentId: { $in: linkedList } };
+    }
+
+    const children = await Student.find(filter);
+    res.status(200).json({
+      success: true,
+      message: "Parent Portal: Children Summary",
+      count: children.length,
+      user: req.user,
+      children,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: "Internal Server Error",
+      message: err.message,
+    });
+  }
+});
+
+// GET /api/parent/child-progress/:studentId - Parents view academic progress of linked children
+router.get("/child-progress/:studentId", async (req, res) => {
+  try {
+    const targetStudentId = req.params.studentId.trim();
+    const parentUser = req.user;
+    const isParent = parentUser.role === "parent";
+
+    if (isParent) {
+      const linkedList = Array.isArray(parentUser.linkedStudentIds) ? parentUser.linkedStudentIds : [];
+      if (!linkedList.includes(targetStudentId)) {
+        return res.status(403).json({
+          success: false,
+          error: "Forbidden",
+          message: "Forbidden: Parent account is not linked to this student.",
+        });
+      }
+    }
+
+    const studentDoc = await Student.findOne({
+      $or: [{ studentId: targetStudentId }, { email: targetStudentId.toLowerCase() }],
+    });
+
+    if (!studentDoc) {
+      return res.status(404).json({
+        success: false,
+        error: "Not Found",
+        message: `Student with ID '${targetStudentId}' not found.`,
+      });
+    }
+
+    const progressRecords = await AcademicProgress.find({ studentId: studentDoc.studentId });
+
+    res.status(200).json({
+      success: true,
+      student: studentDoc,
+      progressCount: progressRecords.length,
+      progressRecords,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: "Internal Server Error",
+      message: err.message,
+    });
+  }
 });
 
 // GET /api/parent/attendance - Parent Attendance Overview
@@ -66,3 +131,4 @@ router.delete("/notifications/:id", (req, res) => {
 });
 
 module.exports = router;
+

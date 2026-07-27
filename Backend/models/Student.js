@@ -3,9 +3,18 @@ const mongoose = require("mongoose");
 const studentSchema = new mongoose.Schema({
   studentId: {
     type: String,
-    required: false,
+    required: true,
+    unique: true,
     trim: true,
     index: true,
+  },
+
+  username: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true,
+    lowercase: true,
   },
 
   name: {
@@ -17,6 +26,7 @@ const studentSchema = new mongoose.Schema({
   email: {
     type: String,
     required: true,
+    unique: true,
     trim: true,
     lowercase: true,
   },
@@ -30,6 +40,13 @@ const studentSchema = new mongoose.Schema({
     type: [String],
     default: [],
   },
+
+  assignedTeacherId: {
+    type: String,
+    trim: true,
+  },
+}, {
+  timestamps: true,
 });
 
 module.exports = mongoose.model("Student", studentSchema);

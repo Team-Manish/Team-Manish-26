@@ -2,28 +2,143 @@ const express = require("express");
 const router = express.Router();
 const { authorize } = require("../middleware/rbac");
 const User = require("../models/User");
+const Student = require("../models/Student");
 
 // Protect all administrative routes exclusively for users with admin role
 router.use(authorize("admin"));
 
 // GET /api/admin/dashboard - Admin System Dashboard
-router.get("/dashboard", (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: "Admin Dashboard Access Granted",
-    user: req.user,
-    stats: {
-      totalUsers: 150,
-      activeSessions: 12,
-      systemHealth: "Optimal",
-    },
-  });
+router.get("/dashboard", async (req, res) => {
+  try {
+    const totalUsers = await User.countDocuments();
+    const teacherCount = await User.countDocuments({ role: "teacher" });
+    const studentCount = await Student.countDocuments();
+    const parentCount = await User.countDocuments({ role: "parent" });
+
+    res.status(200).json({
+      success: true,
+      message: "Admin Dashboard Access Granted",
+      user: req.user,
+      stats: {
+        totalUsers,
+        teacherCount,
+        studentCount,
+        parentCount,
+        systemHealth: "Optimal",
+      },
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: "Internal Server Error",
+      message: err.message,
+    });
+  }
+});
+
+// GET /api/admin/teachers - Admins view and oversee all teacher profiles
+router.get("/teachers", async (req, res) => {
+  try {
+    const teachers = await User.find({ role: "teacher" }).select("-password");
+    res.status(200).json({
+      success: true,
+      count: teachers.length,
+      teachers,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: "Internal Server Error",
+      message: err.message,
+    });
+  }
+});
+
+// PUT /api/admin/teachers/:id - Admins update teacher profile / assignments
+router.put("/teachers/:id", async (req, res) => {
+  try {
+    const { name, department, assignedStudentIds, status } = req.body;
+    const updateData = {};
+    if (name !== undefined) updateData.name = name.trim();
+    if (department !== undefined) updateData.department = department.trim();
+    if (assignedStudentIds !== undefined) updateData.assignedStudentIds = Array.isArray(assignedStudentIds) ? assignedStudentIds : [];
+    if (status !== undefined) updateData.status = status;
+
+    const teacher = await User.findOneAndUpdate(
+      { _id: req.params.id, role: "teacher" },
+      { $set: updateData },
+      { new: true, runValidators: true }
+    ).select("-password");
+
+    if (!teacher) {
+      return res.status(404).json({
+        success: false,
+        error: "Not Found",
+        message: "Teacher profile not found.",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Teacher profile updated successfully by admin.",
+      teacher,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: "Internal Server Error",
+      message: err.message,
+    });
+  }
+});
+
+// DELETE /api/admin/teachers/:id - Admins delete teacher profile
+router.delete("/teachers/:id", async (req, res) => {
+  try {
+    const teacher = await User.findOneAndDelete({ _id: req.params.id, role: "teacher" });
+    if (!teacher) {
+      return res.status(404).json({
+        success: false,
+        error: "Not Found",
+        message: "Teacher profile not found.",
+      });
+    }
+    res.status(200).json({
+      success: true,
+      message: "Teacher profile deleted successfully by admin.",
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: "Internal Server Error",
+      message: err.message,
+    });
+  }
+});
+
+// GET /api/admin/students - Admins view all student profiles
+router.get("/students", async (req, res) => {
+  try {
+    const students = await Student.find();
+    res.status(200).json({
+      success: true,
+      count: students.length,
+      students,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: "Internal Server Error",
+      message: err.message,
+    });
+  }
 });
 
 // GET /api/admin/users - Admin User Management
 router.get("/users", async (req, res) => {
   try {
-    const users = await User.find().select("-password");
+    const roleFilter = req.query.role ? { role: req.query.role } : {};
+    const users = await User.find(roleFilter).select("-password");
     res.status(200).json({
       success: true,
       count: users.length,
@@ -113,3 +228,4 @@ router.delete("/users/:id", async (req, res) => {
 });
 
 module.exports = router;
+

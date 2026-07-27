@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
 import ForgotPasswordModal from "./ForgotPasswordModal";
+import StudentRegisterModal from "./StudentRegisterModal";
 import ThemeToggle from "./ThemeToggle";
 import { validateEmail, validatePassword, getFormValidationErrors } from "../utils/authValidation";
 import { performSecurePostLoginRedirect } from "../utils/navigation";
@@ -27,6 +28,8 @@ function Login() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
+  const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
+
 
   const abortControllerRef = useRef(null);
   const generalErrorRef = useRef(null);
@@ -553,6 +556,29 @@ function Login() {
           </button>
         </form>
 
+        {/* Prospective Student Self-Registration Section */}
+        <div style={{ marginTop: "16px", paddingTop: "16px", borderTop: "1px dashed #e2e8f0", textAlign: "center" }}>
+          <p style={{ fontSize: "14px", color: "#64748b", margin: 0 }}>
+            New Student?{" "}
+            <button
+              type="button"
+              onClick={() => setIsRegisterModalOpen(true)}
+              style={{
+                background: "none",
+                border: "none",
+                color: "#2563eb",
+                fontWeight: "700",
+                cursor: "pointer",
+                textDecoration: "underline",
+                fontSize: "14px",
+                padding: 0,
+              }}
+            >
+              Self-Register Student Account
+            </button>
+          </p>
+        </div>
+
         {/* Footer Support Info */}
         <footer className="card-footer-info">
           <p>
@@ -568,8 +594,15 @@ function Login() {
         onClose={() => setIsForgotModalOpen(false)}
         initialEmail={email}
       />
+
+      {/* Student Self-Registration Modal */}
+      <StudentRegisterModal
+        isOpen={isRegisterModalOpen}
+        onClose={() => setIsRegisterModalOpen(false)}
+      />
     </main>
   );
 }
+
 
 export default Login;

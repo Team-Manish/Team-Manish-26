@@ -1,0 +1,32 @@
+{
+  "name": "team-manish-26",
+  "version": "1.0.0",
+  "description": "A full-stack MERN (MongoDB, Express, React, Node.js) web application for student record directory management with JWT authentication, CSRF protection, and role-based access control.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Team-Manish/Team-Manish-26.git"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Team-Manish/Team-Manish-26/issues"
+  },
+  "homepage": "https://github.com/Team-Manish/Team-Manish-26#readme",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-validator": "^7.3.2",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.8.1",
+    "morgan": "^1.11.0"
+  }
+}

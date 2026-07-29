@@ -1,0 +1,589 @@
+import { useState, useEffect, useRef } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from "../auth/useAuth";
+import ForgotPasswordModal from "./ForgotPasswordModal";
+import StudentRegisterModal from "./StudentRegisterModal";
+import ThemeToggle from "./ThemeToggle";
+import { validateEmail, validatePassword, getFormValidationErrors } from "../utils/authValidation";
+import { performSecurePostLoginRedirect } from "../utils/navigation";
+import "./Login.css";
+
+function Login() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
+
+  // Field interaction / touched states for real-time inline validation
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
+
+  // Failure counter for suggesting password reset upon repeated authentication failures
+  const [failedAttempts, setFailedAttempts] = useState(0);
+
+  // Error states
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [generalError, setGeneralError] = useState("");
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
+  const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
+
+
+  const abortControllerRef = useRef(null);
+  const generalErrorRef = useRef(null);
+  const emailInputRef = useRef(null);
+
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { login, isAuthenticated, isLoading: authLoading, error: authError } = useAuth();
+
+  // Extract redirect target parameter from URL query string safely
+  const searchParams = new URLSearchParams(location.search);
+  const redirectTarget = searchParams.get("redirect") || searchParams.get("from") || "/dashboard";
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      performSecurePostLoginRedirect(navigate, redirectTarget);
+    }
+  }, [isAuthenticated, navigate, redirectTarget]);
+
+  // Handle errors coming from AuthContext
+  useEffect(() => {
+    if (authError) {
+      setGeneralError(authError);
+    }
+  }, [authError]);
+
+  // Focus error summary for screen readers when general error appears
+  useEffect(() => {
+    if (generalError && generalErrorRef.current) {
+      generalErrorRef.current.focus();
+    }
+  }, [generalError]);
+
+  // Real-time inline email validation as user types
+  const handleEmailChange = (e) => {
+    const val = e.target.value;
+    setEmail(val);
+
+    if (generalError) setGeneralError("");
+
+    if (emailTouched || val.length > 3) {
+      setEmailTouched(true);
+      if (!val.trim()) {
+        setEmailError("Email address is required.");
+      } else if (!validateEmail(val)) {
+        setEmailError("Please enter a valid email address format (e.g. parent@example.com).");
+      } else {
+        setEmailError("");
+      }
+    }
+  };
+
+  // Real-time inline password validation as user types
+  const handlePasswordChange = (e) => {
+    const val = e.target.value;
+    setPassword(val);
+
+    if (generalError) setGeneralError("");
+
+    if (passwordTouched || val.length > 0) {
+      setPasswordTouched(true);
+      if (!val) {
+        setPasswordError("Password is required.");
+      } else if (!validatePassword(val)) {
+        setPasswordError(`Password must be at least 8 characters long (${val.length}/8).`);
+      } else {
+        setPasswordError("");
+      }
+    }
+  };
+
+  const handleEmailBlur = () => {
+    setEmailTouched(true);
+    if (!email.trim()) {
+      setEmailError("Email address is required.");
+    } else if (!validateEmail(email)) {
+      setEmailError("Please enter a valid email address format (e.g. parent@example.com).");
+    } else {
+      setEmailError("");
+    }
+  };
+
+  const handlePasswordBlur = () => {
+    setPasswordTouched(true);
+    if (!password) {
+      setPasswordError("Password is required.");
+    } else if (!validatePassword(password)) {
+      setPasswordError(`Password must be at least 8 characters long (${password.length}/8).`);
+    } else {
+      setPasswordError("");
+    }
+  };
+
+  const [activeRole, setActiveRole] = useState("parent");
+
+  const roleConfigs = {
+    student: {
+      tag: "Student Portal",
+      title: "Welcome Back, Students",
+      subtitle: "Sign in to access your course modules, assignment grades, topic progress, and instructor feedback.",
+      demoEmail: "student@school.com",
+      demoPassword: "Student123!",
+      icon: "🎓",
+    },
+    teacher: {
+      tag: "Teacher Hub",
+      title: "Welcome Back, Educators",
+      subtitle: "Sign in to manage class rosters, evaluate student submissions, assign grades, and update progress.",
+      demoEmail: "teacher@school.com",
+      demoPassword: "Teacher123!",
+      icon: "👨‍🏫",
+    },
+    parent: {
+      tag: "Parent Portal",
+      title: "Welcome Back, Parents",
+      subtitle: "Sign in to track your child's academic growth, subject evaluation reports, attendance, and school updates.",
+      demoEmail: "parent@school.com",
+      demoPassword: "ParentPass2026!",
+      icon: "👨‍👩‍👧",
+    },
+    admin: {
+      tag: "Admin Operations",
+      title: "System Operations Center",
+      subtitle: "Sign in to manage user permissions, system security, role hierarchies, and platform telemetry.",
+      demoEmail: "admin@school.com",
+      demoPassword: "Admin123!",
+      icon: "🛡️",
+    },
+  };
+
+  const handleRoleSelect = (roleKey) => {
+    setActiveRole(roleKey);
+    setGeneralError("");
+    const config = roleConfigs[roleKey];
+    setEmail(config.demoEmail);
+    setPassword(config.demoPassword);
+    setEmailTouched(true);
+    setPasswordTouched(true);
+    setEmailError("");
+    setPasswordError("");
+  };
+
+  // Quick preset helper for easy manual testing
+  const handleFillDemo = (type = "success") => {
+    setGeneralError("");
+    setEmailTouched(true);
+    setPasswordTouched(true);
+
+    if (type === "success") {
+      const config = roleConfigs[activeRole];
+      setEmail(config.demoEmail);
+      setPassword(config.demoPassword);
+      setEmailError("");
+      setPasswordError("");
+    } else if (type === "invalid_auth") {
+      setEmail(`invalid.${activeRole}@school.com`);
+      setPassword("WrongPassword123");
+      setEmailError("");
+      setPasswordError("");
+    } else if (type === "bad_email") {
+      setEmail("invalid-email-address");
+      setPassword("Pass1234!");
+      setEmailError("Please enter a valid email address format (e.g. user@example.com).");
+      setPasswordError("");
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setEmailTouched(true);
+    setPasswordTouched(true);
+    setGeneralError("");
+
+    // Validate form inputs
+    const { isValid, emailError: eErr, passwordError: pErr } = getFormValidationErrors(email, password);
+    setEmailError(eErr);
+    setPasswordError(pErr);
+
+    if (!isValid) {
+      if (eErr) emailInputRef.current?.focus();
+      return;
+    }
+
+    // Cancel existing pending request if present
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    abortControllerRef.current = new AbortController();
+    setIsSubmitting(true);
+
+    const attemptedPassword = password;
+    setPassword("");
+
+    try {
+      await login(email, attemptedPassword, abortControllerRef.current.signal);
+      setFailedAttempts(0);
+      performSecurePostLoginRedirect(navigate, redirectTarget);
+    } catch (error) {
+      if (error.name === "AbortError") {
+        return;
+      }
+      setFailedAttempts((prev) => prev + 1);
+      setGeneralError(error.message || "An unexpected error occurred. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const isEmailValid = emailTouched && email.trim() && validateEmail(email);
+  const isFormValid = email.trim() && validateEmail(email) && password && validatePassword(password);
+  const currentConfig = roleConfigs[activeRole];
+
+  return (
+    <main className="login-container">
+      {/* Background ambient lighting */}
+      <div className="bg-shape bg-shape-1" aria-hidden="true"></div>
+      <div className="bg-shape bg-shape-2" aria-hidden="true"></div>
+
+      <div className="login-card-wrapper">
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "12px" }}>
+          <ThemeToggle />
+        </div>
+        {/* Role Switcher Tabs */}
+        <nav className="role-selector-tabs" aria-label="Portal Selection">
+          <button
+            type="button"
+            className={`role-tab ${activeRole === "student" ? "role-tab-active" : ""}`}
+            onClick={() => handleRoleSelect("student")}
+          >
+            🎓 Student
+          </button>
+          <button
+            type="button"
+            className={`role-tab ${activeRole === "teacher" ? "role-tab-active" : ""}`}
+            onClick={() => handleRoleSelect("teacher")}
+          >
+            👨‍🏫 Teacher
+          </button>
+          <button
+            type="button"
+            className={`role-tab ${activeRole === "parent" ? "role-tab-active" : ""}`}
+            onClick={() => handleRoleSelect("parent")}
+          >
+            👨‍👩‍👧 Parent
+          </button>
+          <button
+            type="button"
+            className={`role-tab ${activeRole === "admin" ? "role-tab-active" : ""}`}
+            onClick={() => handleRoleSelect("admin")}
+          >
+            🛡️ Admin
+          </button>
+        </nav>
+
+        {/* Portal Header & Branding */}
+        <header className="brand-header">
+          <div className="brand-logo-badge" aria-hidden="true">
+            <span style={{ fontSize: "24px" }}>{currentConfig.icon}</span>
+          </div>
+          <span className="brand-tag">{currentConfig.tag}</span>
+          <h1 className="login-title">{currentConfig.title}</h1>
+          <p className="login-subtitle">{currentConfig.subtitle}</p>
+        </header>
+
+        {/* Demo Quick Test Bar */}
+        <section className="demo-presets-bar" aria-label="Demo Testing Shortcuts">
+          <span className="demo-presets-label">⚡ Quick Test:</span>
+          <button 
+            type="button" 
+            className="demo-chip chip-success"
+            onClick={() => handleFillDemo("success")}
+            title={`Fill valid demo ${activeRole} credentials`}
+          >
+            Demo {activeRole.toUpperCase()}
+          </button>
+          <button 
+            type="button" 
+            className="demo-chip chip-error"
+            onClick={() => handleFillDemo("invalid_auth")}
+            title="Simulate invalid login error"
+          >
+            Invalid Creds
+          </button>
+          <button 
+            type="button" 
+            className="demo-chip chip-warning"
+            onClick={() => handleFillDemo("bad_email")}
+            title="Simulate invalid email format"
+          >
+            Bad Email
+          </button>
+        </section>
+
+        {/* Dedicated Visually Distinct Error Display Area */}
+        {generalError && (
+          <div 
+            className="error-alert-banner" 
+            role="alert" 
+            aria-live="assertive"
+            tabIndex={-1}
+            ref={generalErrorRef}
+          >
+            <div className="error-alert-icon" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+            </div>
+            <div className="error-alert-content">
+              <strong>Authentication Notice</strong>
+              <p>{generalError}</p>
+              {failedAttempts >= 2 && (
+                <div style={{ marginTop: "8px" }}>
+                  <button
+                    type="button"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#991b1b",
+                      fontWeight: "700",
+                      textDecoration: "underline",
+                      cursor: "pointer",
+                      padding: 0,
+                      fontSize: "13px"
+                    }}
+                    onClick={() => setIsForgotModalOpen(true)}
+                  >
+                    Having trouble signing in? Click here to reset your password.
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Core Login Form */}
+        <form onSubmit={handleSubmit} noValidate className="login-form">
+          {/* Email Input Field */}
+          <div className={`form-group ${emailError ? "has-error" : isEmailValid ? "is-valid" : ""}`}>
+            <div className="label-row">
+              <label htmlFor="login-email">{activeRole.charAt(0).toUpperCase() + activeRole.slice(1)} Email Address</label>
+              {isEmailValid && (
+                <span className="valid-badge" aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                  Valid format
+                </span>
+              )}
+            </div>
+
+            <div className="input-input-wrapper">
+              <span className="field-prefix-icon" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                  <polyline points="22,6 12,13 2,6"></polyline>
+                </svg>
+              </span>
+
+              <input
+                ref={emailInputRef}
+                id="login-email"
+                type="email"
+                name="email"
+                value={email}
+                onChange={handleEmailChange}
+                onBlur={handleEmailBlur}
+                placeholder={`${activeRole.charAt(0).toUpperCase() + activeRole.slice(1)} email address`}
+                autoComplete="email"
+                required
+                aria-invalid={!!emailError}
+                aria-describedby={emailError ? "email-error-msg" : "email-helper-text"}
+                disabled={isSubmitting || authLoading}
+              />
+            </div>
+
+            {!emailError && (
+              <small id="email-helper-text" className="helper-text">
+                Enter the email address registered with your account.
+              </small>
+            )}
+
+            {emailError && (
+              <div id="email-error-msg" className="field-error-message" role="alert">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                <span>{emailError}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Password Input Field */}
+          <div className={`form-group ${passwordError ? "has-error" : ""}`}>
+            <div className="label-row">
+              <label htmlFor="login-password">Your Account Password</label>
+              <span className="char-count" aria-live="polite">
+                {password.length >= 8 ? "✓ Min 8 chars" : `${password.length}/8 min chars`}
+              </span>
+            </div>
+
+            <div className="password-input-wrapper">
+              <span className="field-prefix-icon" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+              </span>
+
+              <input
+                id="login-password"
+                type={showPassword ? "text" : "password"}
+                name="password"
+                value={password}
+                onChange={handlePasswordChange}
+                onBlur={handlePasswordBlur}
+                placeholder="Enter your password"
+                autoComplete="current-password"
+                required
+                aria-invalid={!!passwordError}
+                aria-describedby={passwordError ? "password-error-msg" : undefined}
+                disabled={isSubmitting || authLoading}
+              />
+
+              <button
+                type="button"
+                className="toggle-password-btn"
+                onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? "Hide password string text" : "Show password string text"}
+                title={showPassword ? "Hide password" : "Show password"}
+                disabled={isSubmitting || authLoading}
+              >
+                {showPassword ? "🙈" : "👁️"}
+              </button>
+            </div>
+
+            <div className="password-options-row">
+              <button
+                type="button"
+                className="forgot-password-link"
+                onClick={() => setIsForgotModalOpen(true)}
+                disabled={isSubmitting || authLoading}
+              >
+                Forgot password?
+              </button>
+            </div>
+
+            {passwordError && (
+              <div id="password-error-msg" className="field-error-message" role="alert">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                <span>{passwordError}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Remember Me Checkbox Option */}
+          <div className="checkbox-group">
+            <label className="checkbox-label" htmlFor="remember-me">
+              <input
+                id="remember-me"
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                disabled={isSubmitting || authLoading}
+              />
+              <span className="custom-checkbox" aria-hidden="true">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </span>
+              <span className="checkbox-text">Keep me signed in on this device</span>
+            </label>
+          </div>
+
+          {/* Prominent High-Contrast Login Button */}
+          <button
+            type="submit"
+            className="submit-login-btn"
+            disabled={isSubmitting || authLoading || !isFormValid}
+            aria-busy={isSubmitting || authLoading}
+          >
+            {isSubmitting || authLoading ? (
+              <span className="button-loading-state">
+                <span className="btn-spinner" aria-hidden="true"></span>
+                <span>Authenticating {activeRole.charAt(0).toUpperCase() + activeRole.slice(1)} Account...</span>
+              </span>
+            ) : (
+              <span className="button-normal-state">
+                <span>Sign In to {currentConfig.tag}</span>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                  <polyline points="12 5 19 12 12 19"></polyline>
+                </svg>
+              </span>
+            )}
+          </button>
+        </form>
+
+        {/* Prospective Student Self-Registration Section */}
+        <div style={{ marginTop: "16px", paddingTop: "16px", borderTop: "1px dashed var(--color-border)", textAlign: "center" }}>
+          <p style={{ fontSize: "14px", color: "var(--color-text-muted)", margin: 0 }}>
+            New Student?{" "}
+            <button
+              type="button"
+              onClick={() => setIsRegisterModalOpen(true)}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--color-primary)",
+                fontWeight: "700",
+                cursor: "pointer",
+                textDecoration: "underline",
+                fontSize: "14px",
+                padding: 0,
+              }}
+            >
+              Self-Register Student Account
+            </button>
+          </p>
+        </div>
+
+        {/* Footer Support Info */}
+        <footer className="card-footer-info">
+          <p>
+            Need help accessing your student's account? Contact school IT support at{" "}
+            <a href="mailto:support@school.edu">support@school.edu</a>
+          </p>
+        </footer>
+      </div>
+
+      {/* Account Password Reset Modal */}
+      <ForgotPasswordModal
+        isOpen={isForgotModalOpen}
+        onClose={() => setIsForgotModalOpen(false)}
+        initialEmail={email}
+      />
+
+      {/* Student Self-Registration Modal */}
+      <StudentRegisterModal
+        isOpen={isRegisterModalOpen}
+        onClose={() => setIsRegisterModalOpen(false)}
+      />
+    </main>
+  );
+}
+
+
+export default Login;

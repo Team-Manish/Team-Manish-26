@@ -1,0 +1,125 @@
+.progress-widget-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+.widget-control-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  background: var(--color-surface, #ffffff);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 12px;
+  padding: 1.25rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.selector-section {
+  width: 100%;
+}
+
+.subject-pills-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  border-top: 1px dashed var(--color-border, #cbd5e1);
+  padding-top: 0.85rem;
+}
+
+.pills-label {
+  font-size: 0.825rem;
+  font-weight: 600;
+  color: var(--color-text-muted, #64748b);
+  margin-right: 0.25rem;
+}
+
+.pill-btn {
+  background: var(--color-bg-subtle, #f1f5f9);
+  border: 1px solid var(--color-border, #cbd5e1);
+  color: var(--color-text-main, #334155);
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 0.35rem 0.85rem;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pill-btn:hover {
+  background: var(--color-primary-light, #eff6ff);
+  color: var(--color-primary, #3b82f6);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.pill-btn.active-pill {
+  background: var(--color-primary, #3b82f6);
+  color: #ffffff;
+  border-color: var(--color-primary, #3b82f6);
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.25);
+}
+
+.kpi-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.kpi-card {
+  background: var(--color-surface, #ffffff);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.kpi-icon {
+  font-size: 1.8rem;
+  background: var(--color-bg-subtle, #f8fafc);
+  padding: 0.5rem;
+  border-radius: 8px;
+}
+
+.kpi-data {
+  display: flex;
+  flex-direction: column;
+}
+
+.kpi-title {
+  font-size: 0.775rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted, #64748b);
+}
+
+.kpi-value {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--color-text-main, #0f172a);
+}
+
+.kpi-subtext {
+  font-size: 0.725rem;
+  color: var(--color-text-muted, #64748b);
+}
+
+.trend-up {
+  color: #10b981;
+}
+
+.trend-down {
+  color: #ef4444;
+}

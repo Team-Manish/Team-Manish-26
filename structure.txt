@@ -1,0 +1,63 @@
+Folder PATH listing
+
+Total
+├── Backend
+│   ├── bin
+│   │   └── www
+│   ├── config
+│   │   └── db.js
+│   ├── models
+│   │   ├── Student.js
+│   │   └── User.js
+│   ├── public
+│   │   └── stylesheets
+│   │       └── style.css
+│   ├── routes
+│   │   ├── auth.js
+│   │   └── students.js
+│   ├── scripts
+│   │   ├── checkUsers.js
+│   │   └── createTestUser.js
+│   ├── views
+│   │   ├── error.jade
+│   │   ├── index.jade
+│   │   └── layout.jade
+│   ├── .env.example
+│   ├── .gitignore
+│   ├── AGENTS.md
+│   ├── app.js
+│   ├── package-lock.json
+│   └── package.json
+├── Frontend
+│   ├── public
+│   │   ├── favicon.svg
+│   │   └── icons.svg
+│   ├── src
+│   │   ├── assets
+│   │   │   ├── hero.png
+│   │   │   ├── react.svg
+│   │   │   └── vite.svg
+│   │   ├── auth
+│   │   │   ├── AuthContext.jsx
+│   │   │   ├── PrivateRoute.jsx
+│   │   │   └── authService.js
+│   │   ├── components
+│   │   │   ├── Dashboard.css
+│   │   │   ├── Dashboard.jsx
+│   │   │   ├── Login.css
+│   │   │   ├── Login.jsx
+│   │   │   ├── StudentCard.jsx
+│   │   │   └── StudentForm.jsx
+│   │   ├── App.css
+│   │   ├── App.jsx
+│   │   ├── index.css
+│   │   └── main.jsx
+│   ├── .gitignore
+│   ├── .oxlintrc.json
+│   ├── README.md
+│   ├── index.html
+│   ├── package-lock.json
+│   ├── package.json
+│   └── vite.config.js
+├── .gitignore
+└── README.md

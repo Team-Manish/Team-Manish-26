@@ -17,6 +17,7 @@ const adminRouter = require("./routes/admin");
 const teacherRouter = require("./routes/teacher");
 const parentRouter = require("./routes/parent");
 const progressRouter = require("./routes/progress");
+const attendanceRouter = require("./routes/attendance");
 
 dotenv.config();
 
@@ -82,6 +83,14 @@ const loginLimiter = rateLimit({
 app.set("views", path.join(__dirname, "views"));
 app.set("view engine", "jade");
 
+// Redact sensitive tokens from URLs in access logs (Defense-in-depth)
+logger.token("url", (req) => {
+  const rawUrl = req.originalUrl || req.url || "";
+  return rawUrl
+    .replace(/([?&]token=)[^&]+/gi, "$1[REDACTED]")
+    .replace(/(\/validate-reset-token\/)[^/?#]+/gi, "$1[REDACTED]");
+});
+
 app.use(logger("dev"));
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: false }));
@@ -96,6 +105,7 @@ app.use("/api/teacher", teacherRouter);
 app.use("/api/parent", parentRouter);
 app.use("/api/progress", progressRouter);
 app.use("/api/v1/progress", progressRouter);
+app.use("/api/attendance", attendanceRouter);
 
 // SPA Client-Side Fallback for single-origin hosting
 app.get("*", (req, res, next) => {

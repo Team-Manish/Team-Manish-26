@@ -1,3 +1,6 @@
+# Sensitive Local Reference Project Copies (Strictly Excluded)
+/#Original Project A-Z copy/
+
 # Dependency directories
 node_modules/
 **/node_modules/

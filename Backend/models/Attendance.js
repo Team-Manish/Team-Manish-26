@@ -1,0 +1,107 @@
+const mongoose = require("mongoose");
+
+const VALID_ATTENDANCE_STATUSES = ["present", "absent", "late", "excused"];
+
+const attendanceSchema = new mongoose.Schema(
+  {
+    studentId: {
+      type: String,
+      required: [true, "studentId is required"],
+      trim: true,
+      uppercase: true,
+      index: true,
+    },
+    studentName: {
+      type: String,
+      required: [true, "studentName is required"],
+      trim: true,
+    },
+    className: {
+      type: String,
+      required: [true, "className is required"],
+      trim: true,
+      index: true,
+    },
+    school: {
+      type: String,
+      default: "Main Campus",
+      trim: true,
+      index: true,
+    },
+    date: {
+      type: Date,
+      required: [true, "date is required"],
+      index: true,
+    },
+    dateStr: {
+      type: String,
+      required: [true, "dateStr is required"],
+      trim: true,
+      index: true,
+      match: [/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, "dateStr must be in YYYY-MM-DD format"],
+    },
+    status: {
+      type: String,
+      required: [true, "status is required"],
+      enum: {
+        values: VALID_ATTENDANCE_STATUSES,
+        message: `Invalid attendance status '{VALUE}'. Allowed values: ${VALID_ATTENDANCE_STATUSES.join(", ")}`,
+      },
+      default: "present",
+    },
+    remarks: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    markedBy: {
+      type: String,
+      trim: true,
+      default: null,
+      index: true,
+    },
+    lastModifiedBy: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+// Pre-validate hook to ensure dateStr and date are always consistent UTC calendar representations
+attendanceSchema.pre("validate", function () {
+  if (this.studentId) {
+    this.studentId = this.studentId.trim().toUpperCase();
+  }
+
+  if (this.date && !this.dateStr) {
+    const d = new Date(this.date);
+    if (!isNaN(d.getTime())) {
+      const year = d.getUTCFullYear();
+      const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(d.getUTCDate()).padStart(2, "0");
+      this.dateStr = `${year}-${month}-${day}`;
+    }
+  }
+
+  if (this.dateStr && !this.date) {
+    const parts = this.dateStr.split("-").map(Number);
+    if (parts.length === 3) {
+      this.date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0));
+    }
+  }
+});
+
+// Compound unique index ensuring at most one record per student per calendar date per class
+attendanceSchema.index({ studentId: 1, dateStr: 1, className: 1 }, { unique: true });
+
+// Query indexes for class-level and school-level aggregations
+attendanceSchema.index({ dateStr: 1, className: 1 });
+attendanceSchema.index({ dateStr: 1, school: 1 });
+attendanceSchema.index({ date: 1, className: 1 });
+attendanceSchema.index({ date: 1, school: 1 });
+
+module.exports = mongoose.model("Attendance", attendanceSchema);

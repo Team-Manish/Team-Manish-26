@@ -4,6 +4,7 @@ import { ThemeProvider } from "./context/ThemeContext";
 import { useAuth } from "./auth/useAuth";
 import PrivateRoute from "./auth/PrivateRoute";
 import Login from "./components/Login";
+import ResetPassword from "./components/ResetPassword";
 import StudentDashboard from "./components/StudentDashboard";
 import TeacherDashboard from "./components/TeacherDashboard";
 import ParentDashboard from "./components/ParentDashboard";
@@ -38,6 +39,7 @@ function App() {
         <Router>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
 
             {/* Portal-Specific Exclusive Dashboard Routes */}
             <Route

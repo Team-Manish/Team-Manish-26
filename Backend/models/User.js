@@ -78,6 +78,22 @@ const userSchema = new mongoose.Schema({
     type: [String],
     default: [],
   },
+  // Password Reset Subsystem (Phase 3: Hardened Token Storage)
+  resetPasswordToken: {
+    type: String,
+    default: null,
+    trim: true,
+  },
+  resetPasswordExpires: {
+    type: Date,
+    default: null,
+  },
+  // Server-Side Session Invalidation (Phase 3A: Token Versioning)
+  tokenVersion: {
+    type: Number,
+    default: 0,
+    required: true,
+  },
 }, {
   timestamps: true,
   toObject: { getters: true },
@@ -86,6 +102,10 @@ const userSchema = new mongoose.Schema({
 
 // Explicit performance index on role field for fast role-filtered searches
 userSchema.index({ role: 1 });
+// Sparse compound index on password reset token and expiration for rapid lookups and atomic consumption
+userSchema.index({ resetPasswordToken: 1, resetPasswordExpires: 1 }, { sparse: true });
+// Index on tokenVersion for fast session validity verification
+userSchema.index({ tokenVersion: 1 });
 
 // Schema-level validation throwing a descriptive MongoServerError on invalid role value
 userSchema.pre("validate", function () {
@@ -136,6 +156,11 @@ userSchema.post(["find", "findOne", "init"], function (docs) {
     } else if (doc && !doc.role) {
       doc.role = "user";
     }
+    if (doc && doc._doc && doc._doc.tokenVersion === undefined) {
+      doc._doc.tokenVersion = 0;
+    } else if (doc && doc.tokenVersion === undefined) {
+      doc.tokenVersion = 0;
+    }
   });
 });
 
@@ -144,5 +169,3 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 };
 
 module.exports = mongoose.model("User", userSchema);
-
-

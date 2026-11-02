@@ -295,6 +295,118 @@ export const checkSession = async () => {
   }
 };
 
+/**
+ * Request password reset link (Account Enumeration Protected)
+ */
+export const requestPasswordReset = async (email) => {
+  const token = await fetchCsrfToken();
+  const response = await fetch(`${API_BASE_URL}/forgot-password`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-XSRF-TOKEN": token,
+    },
+    credentials: "include",
+    body: JSON.stringify({ email: email.trim().toLowerCase() }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (response.status === 429) {
+    throw new Error(data.message || "Too many password reset requests. Please try again after 15 minutes.");
+  }
+
+  if (!response.ok) {
+    const msg = data.errors ? data.errors.map((e) => e.message).join(", ") : (data.message || "Unable to process password reset request.");
+    throw new Error(msg);
+  }
+
+  return {
+    success: true,
+    message: data.message || "If an account with that email exists, a password reset link has been dispatched.",
+  };
+};
+
+/**
+ * Validate password reset token (via POST body to prevent URL logging)
+ */
+export const validateResetToken = async (resetToken) => {
+  if (!resetToken || !resetToken.trim()) {
+    return { valid: false, message: "No password reset token was provided." };
+  }
+
+  try {
+    const csrf = await fetchCsrfToken();
+    const response = await fetch(`${API_BASE_URL}/validate-reset-token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-XSRF-TOKEN": csrf,
+      },
+      credentials: "include",
+      body: JSON.stringify({ token: resetToken.trim() }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (response.ok && data.valid) {
+      return { valid: true, message: data.message || "Reset token is valid." };
+    }
+
+    return {
+      valid: false,
+      message: data.message || "Password reset token is invalid or has expired.",
+    };
+  } catch (err) {
+    return {
+      valid: false,
+      message: "Unable to verify reset token. Please check your internet connection.",
+    };
+  }
+};
+
+/**
+ * Reset password using validated token
+ */
+export const resetPassword = async (resetToken, newPassword) => {
+  if (!resetToken || !resetToken.trim()) {
+    throw new Error("Reset token is missing or invalid.");
+  }
+
+  if (!newPassword || newPassword.length < 8) {
+    throw new Error("Password must be at least 8 characters long.");
+  }
+
+  const csrf = await fetchCsrfToken();
+  const response = await fetch(`${API_BASE_URL}/reset-password`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-XSRF-TOKEN": csrf,
+    },
+    credentials: "include",
+    body: JSON.stringify({
+      token: resetToken.trim(),
+      password: newPassword,
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (response.status === 429) {
+    throw new Error(data.message || "Too many password reset attempts. Please try again after 15 minutes.");
+  }
+
+  if (!response.ok || !data.success) {
+    const msg = data.errors ? data.errors.map((e) => e.message).join(", ") : (data.message || "Password reset failed.");
+    throw new Error(msg);
+  }
+
+  return {
+    success: true,
+    message: data.message,
+  };
+};
+
 export const getCurrentUser = () => currentUser;
 export const isAuthenticated = () => !!currentUser;
-

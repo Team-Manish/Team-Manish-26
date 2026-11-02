@@ -17,6 +17,7 @@ const adminRouter = require("./routes/admin");
 const teacherRouter = require("./routes/teacher");
 const parentRouter = require("./routes/parent");
 const progressRouter = require("./routes/progress");
+const attendanceRouter = require("./routes/attendance");
 
 dotenv.config();
 
@@ -96,6 +97,7 @@ app.use("/api/teacher", teacherRouter);
 app.use("/api/parent", parentRouter);
 app.use("/api/progress", progressRouter);
 app.use("/api/v1/progress", progressRouter);
+app.use("/api/attendance", attendanceRouter);
 
 // SPA Client-Side Fallback for single-origin hosting
 app.get("*", (req, res, next) => {

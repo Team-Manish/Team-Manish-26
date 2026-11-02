@@ -9,14 +9,25 @@ const Student = require("../models/Student");
 // Protect attendance endpoints exclusively for admin and teacher roles
 router.use(authorize(["admin", "teacher"]));
 
-// Priority 4: Rate Limiting on Attendance Mutations (POST /api/attendance)
+// Priority 5: Rate Limiting on Attendance Mutations keyed by authenticated user ID (stable identifier)
 const attendanceMutationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 60, // 60 write batches per 15 minutes per IP
+  max: 60, // 60 write batches per 15 minutes per authenticated user
+  keyGenerator: (req) => {
+    // Authenticated user ID (stable identifier prevents school-wide NAT/IP collisions)
+    if (req.user && (req.user.userId || req.user._id || req.user.id)) {
+      return `user_${req.user.userId || req.user._id || req.user.id}`;
+    }
+    // Fallback to IP for edge cases / unauthenticated attempts
+    return req.ip || req.connection?.remoteAddress || "unknown_ip";
+  },
+  validate: {
+    keyGeneratorIpFallback: false,
+  },
   message: {
     success: false,
     error: "Too Many Requests",
-    message: "Too many attendance write requests. Please try again after 15 minutes.",
+    message: "Too many attendance write requests for this user account. Please try again after 15 minutes.",
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -339,15 +350,25 @@ router.get("/classes", async (req, res) => {
  * POST /api/attendance
  * Mark or bulk update attendance records.
  *
- * Priority 2: Validates student ID against trusted Student database records.
- *             Derives authoritative studentName from Student collection (never client-supplied name).
+ * Priority 1: Fail closed with HTTP 503 if MongoDB is unavailable; never bypass student validation.
+ * Priority 2: Validates student ID against authoritative Student database records.
+ *             Derives authoritative studentName strictly from Student collection (never client-supplied name).
  * Priority 3: Strictly requires YYYY-MM-DD calendar dates.
- * Priority 4: Protected by attendanceMutationLimiter rate limiter.
- * Priority 5: Pre-validates all records before execution; reports explicit error on database failure.
- * Priority 6: Enforces case-insensitive identifier normalization (UPPERCASE).
+ * Priority 4: Enforces trusted institutional school ('Main Campus') and sanitized class format.
+ * Priority 5: Rate limited per authenticated user ID (keyGenerator).
+ * Priority 6: Detects in-batch duplicate tuples; extracts bulk-write error indices accurately.
  */
 router.post("/", attendanceMutationLimiter, async (req, res) => {
   try {
+    // Priority 1: Fail closed if MongoDB connection is offline
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        error: "Service Unavailable",
+        message: "Attendance service is unavailable: Database connection is offline. Attendance records cannot be verified or saved.",
+      });
+    }
+
     const { records } = req.body;
     if (!records || !Array.isArray(records) || records.length === 0) {
       return res.status(400).json({
@@ -381,18 +402,17 @@ router.post("/", attendanceMutationLimiter, async (req, res) => {
       ),
     ];
 
-    // Priority 2: Query authoritative student records from MongoDB if connected
+    // Priority 2: Query authoritative student records from MongoDB
+    const studentDocs = await Student.find({
+      studentId: { $in: submittedStudentIds },
+    });
     const trustedStudentsMap = new Map();
-    if (mongoose.connection.readyState === 1 && submittedStudentIds.length > 0) {
-      const studentDocs = await Student.find({
-        studentId: { $in: submittedStudentIds },
-      });
-      studentDocs.forEach((s) => {
-        trustedStudentsMap.set(s.studentId.toUpperCase(), s);
-      });
-    }
+    studentDocs.forEach((s) => {
+      trustedStudentsMap.set(s.studentId.toUpperCase(), s);
+    });
 
     const bulkOps = [];
+    const seenTuples = new Set(); // Priority 6: Detect in-batch duplicate tuples
 
     // Pre-validation pass across the entire batch
     for (let i = 0; i < records.length; i++) {
@@ -434,25 +454,41 @@ router.post("/", attendanceMutationLimiter, async (req, res) => {
         });
       }
 
-      // Priority 2: Verify student exists in authoritative database registry (when DB active)
-      let trustedStudent = null;
-      if (mongoose.connection.readyState === 1) {
-        trustedStudent = trustedStudentsMap.get(cleanStudentId);
-        if (!trustedStudent) {
-          return res.status(400).json({
-            success: false,
-            error: "Bad Request",
-            message: `Student with ID '${cleanStudentId}' does not exist in authoritative student registry. Entire batch rejected.`,
-          });
-        }
+      const cleanClassName = String(record.className).trim();
+      if (!/^[A-Za-z0-9\s\-_]{2,50}$/.test(cleanClassName)) {
+        return res.status(400).json({
+          success: false,
+          error: "Bad Request",
+          message: `Invalid className '${cleanClassName}' at index ${i}. Must be 2-50 alphanumeric characters.`,
+        });
+      }
+
+      // Priority 6: In-batch duplicate detection
+      const tupleKey = `${cleanStudentId}:::${parsed.dateStr}:::${cleanClassName}`;
+      if (seenTuples.has(tupleKey)) {
+        return res.status(400).json({
+          success: false,
+          error: "Bad Request",
+          message: `Duplicate attendance entry detected at index ${i} for student '${cleanStudentId}' on date '${parsed.dateStr}' in class '${cleanClassName}'. Entire batch rejected.`,
+        });
+      }
+      seenTuples.add(tupleKey);
+
+      // Priority 2: Verify student exists in authoritative database registry
+      const trustedStudent = trustedStudentsMap.get(cleanStudentId);
+      if (!trustedStudent) {
+        return res.status(400).json({
+          success: false,
+          error: "Bad Request",
+          message: `Student with ID '${cleanStudentId}' does not exist in authoritative student registry. Entire batch rejected.`,
+        });
       }
 
       // Teacher authorization check: Verify teacher is assigned to student
       if (isTeacher) {
         const isAssigned =
           teacherAssignedSet.has(cleanStudentId) ||
-          (trustedStudent &&
-            trustedStudent.assignedTeacherId &&
+          (trustedStudent.assignedTeacherId &&
             trustedStudent.assignedTeacherId.trim().toUpperCase() ===
               (req.user.userId || "").trim().toUpperCase());
 
@@ -465,15 +501,18 @@ router.post("/", attendanceMutationLimiter, async (req, res) => {
         }
       }
 
-      // Priority 2: Authoritative student name derivation
-      const trustedName = trustedStudent
-        ? trustedStudent.name
-        : record.studentName
-        ? String(record.studentName).trim()
-        : "Student";
+      // Priority 2: Authoritative student name derivation strictly from registry (never client-supplied name)
+      const trustedName = trustedStudent.name;
 
-      const cleanClassName = String(record.className).trim();
-      const cleanSchool = record.school ? String(record.school).trim() : "Main Campus";
+      // Priority 4: Institutional school verification (enforces canonical institution, rejects spoofing)
+      if (record.school && String(record.school).trim() !== "Main Campus") {
+        return res.status(400).json({
+          success: false,
+          error: "Bad Request",
+          message: `Invalid school '${record.school}' at index ${i}. Only authorized institutional campus 'Main Campus' is permitted.`,
+        });
+      }
+      const cleanSchool = "Main Campus";
       const remarks = record.remarks ? String(record.remarks).trim() : "";
 
       bulkOps.push({
@@ -486,7 +525,7 @@ router.post("/", attendanceMutationLimiter, async (req, res) => {
           update: {
             $set: {
               studentId: cleanStudentId,
-              studentName: trustedName, // Authoritative derivation
+              studentName: trustedName, // Authoritative derivation only
               className: cleanClassName,
               school: cleanSchool,
               date: parsed.date,
@@ -500,7 +539,7 @@ router.post("/", attendanceMutationLimiter, async (req, res) => {
       });
     }
 
-    // Priority 5: Execute bulk write with ordered execution and transparent error reporting
+    // Priority 6: Execute bulk write with ordered execution and transparent error reporting
     try {
       const result = await Attendance.bulkWrite(bulkOps, { ordered: true });
       return res.status(200).json({
@@ -512,12 +551,18 @@ router.post("/", attendanceMutationLimiter, async (req, res) => {
       });
     } catch (dbErr) {
       console.error("Attendance bulkWrite database failure:", dbErr.message);
+      const failedIndex =
+        dbErr.index ??
+        dbErr.writeErrors?.[0]?.index ??
+        dbErr.result?.getWriteErrors?.()?.[0]?.index ??
+        null;
+
       return res.status(500).json({
         success: false,
         error: "Database Write Error",
         message:
           "Database error occurred during bulk attendance write. Prior records in this ordered batch may have been committed.",
-        failedIndex: dbErr.index !== undefined ? dbErr.index : null,
+        failedIndex,
         details: dbErr.message,
       });
     }

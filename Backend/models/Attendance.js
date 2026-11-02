@@ -54,6 +54,17 @@ const attendanceSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    markedBy: {
+      type: String,
+      trim: true,
+      default: null,
+      index: true,
+    },
+    lastModifiedBy: {
+      type: String,
+      trim: true,
+      default: null,
+    },
   },
   {
     timestamps: true,

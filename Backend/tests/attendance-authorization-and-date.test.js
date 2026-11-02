@@ -281,6 +281,20 @@ test("Unit Test 5: Attendance Schema exports unique compound index on { studentI
   assert.equal(hasUniqueCompoundIndex, true);
 });
 
+test("Unit Test 5b: Phase 2A: Historical documents without markedBy or lastModifiedBy evaluate to null without validation error", async () => {
+  const legacyRecord = new Attendance({
+    studentId: "STU-1001",
+    studentName: "Jane Doe",
+    className: "Grade 10-A",
+    date: new Date(Date.UTC(2026, 6, 24)),
+    dateStr: "2026-07-24",
+    status: "present",
+  });
+  await legacyRecord.validate();
+  assert.equal(legacyRecord.markedBy, null, "Historical documents without markedBy evaluate to null");
+  assert.equal(legacyRecord.lastModifiedBy, null, "Historical documents without lastModifiedBy evaluate to null");
+});
+
 /**
  * =============================================================================
  * SECTION B: REAL EXPRESS HTTP INTEGRATION TESTS (Network Loopback & Real Stack)
@@ -364,6 +378,23 @@ test("HTTP Test 8: Missing or mismatched CSRF token on POST /api/attendance is r
   assert.equal(resMismatch.status, 403);
   const dataMismatch = await resMismatch.json();
   assert.match(dataMismatch.message, /CSRF/i);
+});
+
+test("HTTP Test 8b: Unauthenticated request to POST /api/attendance is rejected with HTTP 401 Unauthorized before mutation", async () => {
+  const res = await fetch(`http://127.0.0.1:${port}/api/attendance`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: "XSRF-TOKEN=token-alpha",
+      "x-xsrf-token": "token-alpha",
+    },
+    body: JSON.stringify({ records: [] }),
+  });
+
+  assert.equal(res.status, 401);
+  const data = await res.json();
+  assert.equal(data.success, false);
+  assert.equal(data.error, "Unauthorized");
 });
 
 test("HTTP Test 9: Student role attempting to access attendance endpoints returns HTTP 403 Forbidden", async () => {
@@ -497,6 +528,142 @@ test("HTTP Test 12: Priority 2: Authoritative student name is derived strictly f
     "Jane Doe (Authoritative)",
     "Server must strictly use name from Student registry, discarding client-supplied name"
   );
+});
+
+test("HTTP Test 12b: Phase 2A: New attendance record receives authenticated user ID in markedBy ($setOnInsert) and lastModifiedBy ($set)", async () => {
+  let capturedBulkOps = [];
+  const tempBulkWrite = Attendance.bulkWrite;
+  Attendance.bulkWrite = async (ops) => {
+    capturedBulkOps = ops;
+    return { matchedCount: ops.length, modifiedCount: ops.length, upsertedCount: 0 };
+  };
+
+  const teacherToken = createAuthToken("teacher-id-1", "teacher");
+  const headers = createHeaders(teacherToken);
+
+  const payload = {
+    records: [
+      {
+        studentId: "STU-1001",
+        className: "Grade 10-A",
+        date: "2026-07-24",
+        status: "present",
+      },
+    ],
+  };
+
+  const res = await fetch(`http://127.0.0.1:${port}/api/attendance`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  Attendance.bulkWrite = tempBulkWrite;
+
+  assert.equal(res.status, 200);
+  assert.equal(capturedBulkOps.length, 1);
+  const op = capturedBulkOps[0].updateOne;
+  assert.equal(op.update.$setOnInsert.markedBy, "TCH-2001", "markedBy must be set to authenticated teacher's userId");
+  assert.equal(op.update.$set.lastModifiedBy, "TCH-2001", "lastModifiedBy must be set to authenticated teacher's userId");
+});
+
+test("HTTP Test 12c: Phase 2A: Client-supplied markedBy and lastModifiedBy are ignored and cannot spoof attribution", async () => {
+  let capturedBulkOps = [];
+  const tempBulkWrite = Attendance.bulkWrite;
+  Attendance.bulkWrite = async (ops) => {
+    capturedBulkOps = ops;
+    return { matchedCount: ops.length, modifiedCount: ops.length, upsertedCount: 0 };
+  };
+
+  const teacherToken = createAuthToken("teacher-id-1", "teacher");
+  const headers = createHeaders(teacherToken);
+
+  // Client attempts to spoof attribution
+  const spoofAttributionPayload = {
+    records: [
+      {
+        studentId: "STU-1001",
+        className: "Grade 10-A",
+        date: "2026-07-24",
+        status: "present",
+        markedBy: "SPOOFED_ADMIN_ADM_999",
+        lastModifiedBy: "SPOOFED_ADMIN_ADM_999",
+      },
+    ],
+  };
+
+  const res = await fetch(`http://127.0.0.1:${port}/api/attendance`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(spoofAttributionPayload),
+  });
+
+  Attendance.bulkWrite = tempBulkWrite;
+
+  assert.equal(res.status, 200);
+  const op = capturedBulkOps[0].updateOne;
+  assert.equal(
+    op.update.$setOnInsert.markedBy,
+    "TCH-2001",
+    "markedBy must remain authenticated user ID, discarding client spoofing"
+  );
+  assert.equal(
+    op.update.$set.lastModifiedBy,
+    "TCH-2001",
+    "lastModifiedBy must remain authenticated user ID, discarding client spoofing"
+  );
+});
+
+test("HTTP Test 12d: Phase 2A: Updating attendance applies lastModifiedBy of current updater while preserving markedBy via $setOnInsert", async () => {
+  let capturedBulkOps = [];
+  const tempBulkWrite = Attendance.bulkWrite;
+  Attendance.bulkWrite = async (ops) => {
+    capturedBulkOps = ops;
+    return { matchedCount: ops.length, modifiedCount: ops.length, upsertedCount: 0 };
+  };
+
+  // Teacher 2 modifies record previously created by Teacher 1
+  const teacher2Token = createAuthToken("teacher-id-2", "teacher");
+  const headers = createHeaders(teacher2Token);
+
+  const updatePayload = {
+    records: [
+      {
+        studentId: "STU-1001", // STU-1001 is also assigned to teacher-id-2 in mockUsers
+        className: "Grade 10-A",
+        date: "2026-07-24",
+        status: "late",
+        remarks: "Arrived 10 mins late (Updated by TCH-2002)",
+      },
+    ],
+  };
+
+  const res = await fetch(`http://127.0.0.1:${port}/api/attendance`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(updatePayload),
+  });
+
+  Attendance.bulkWrite = tempBulkWrite;
+
+  assert.equal(res.status, 200);
+  const op = capturedBulkOps[0].updateOne;
+  assert.equal(op.update.$set.lastModifiedBy, "TCH-2002", "lastModifiedBy must be updated to TCH-2002");
+  assert.equal(op.update.$setOnInsert.markedBy, "TCH-2002", "$setOnInsert ensures markedBy is only written on insert");
+
+  // Verify MongoDB document update simulation: $setOnInsert ignored on existing doc, $set applied
+  const existingDoc = {
+    studentId: "STU-1001",
+    dateStr: "2026-07-24",
+    className: "Grade 10-A",
+    markedBy: "TCH-2001", // Original creator
+    lastModifiedBy: "TCH-2001",
+  };
+
+  // On update, MongoDB applies $set
+  Object.assign(existingDoc, op.update.$set);
+  assert.equal(existingDoc.markedBy, "TCH-2001", "Original markedBy must be preserved on update");
+  assert.equal(existingDoc.lastModifiedBy, "TCH-2002", "lastModifiedBy must reflect current modifying user");
 });
 
 test("HTTP Test 13: Priority 4: School spoofing is rejected with HTTP 400 Bad Request", async () => {
@@ -644,6 +811,36 @@ test("HTTP Test 18: Parent can access linked child attendance (HTTP 200 OK)", as
   assert.equal(data.success, true);
   assert.equal(data.studentId, "STU-1001");
   assert.ok(data.summary);
+});
+
+test("HTTP Test 18b: Phase 2A: Existing legacy records without markedBy/lastModifiedBy remain readable without errors", async () => {
+  const teacherToken = createAuthToken("teacher-id-1", "teacher");
+  const headers = createHeaders(teacherToken);
+
+  // GET daily details
+  const resDaily = await fetch(`http://127.0.0.1:${port}/api/attendance/daily-details?date=2026-07-24`, {
+    method: "GET",
+    headers,
+  });
+
+  assert.equal(resDaily.status, 200);
+  const dataDaily = await resDaily.json();
+  assert.equal(dataDaily.success, true);
+  assert.ok(Array.isArray(dataDaily.records));
+  assert.ok(dataDaily.records.length > 0);
+  assert.equal(dataDaily.records[0].studentId, "STU-1001");
+
+  // GET parent child attendance
+  const parentToken = createAuthToken("parent-id-1", "parent");
+  const parentHeaders = createHeaders(parentToken);
+  const resParent = await fetch(`http://127.0.0.1:${port}/api/parent/child-attendance/STU-1001?year=2026&month=7`, {
+    method: "GET",
+    headers: parentHeaders,
+  });
+  assert.equal(resParent.status, 200);
+  const dataParent = await resParent.json();
+  assert.equal(dataParent.success, true);
+  assert.ok(Array.isArray(dataParent.records));
 });
 
 test("HTTP Test 19: Parent with zero linked children receives empty records with 0 stats (Zero Mock Data Leakage)", async () => {

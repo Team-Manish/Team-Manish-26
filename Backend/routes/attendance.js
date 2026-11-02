@@ -387,6 +387,9 @@ router.post("/", attendanceMutationLimiter, async (req, res) => {
     }
 
     const isTeacher = req.user.role === "teacher";
+    const submitterId =
+      (req.user && (req.user.userId || req.user.id || (req.user._id && String(req.user._id)))) ||
+      "system";
     const teacherAssignedSet = new Set(
       isTeacher && Array.isArray(req.user.assignedStudentIds)
         ? req.user.assignedStudentIds.map((id) => String(id).trim().toUpperCase())
@@ -523,6 +526,9 @@ router.post("/", attendanceMutationLimiter, async (req, res) => {
             className: cleanClassName,
           },
           update: {
+            $setOnInsert: {
+              markedBy: submitterId, // Established on creation; preserved on subsequent updates
+            },
             $set: {
               studentId: cleanStudentId,
               studentName: trustedName, // Authoritative derivation only
@@ -532,6 +538,7 @@ router.post("/", attendanceMutationLimiter, async (req, res) => {
               dateStr: parsed.dateStr,
               status,
               remarks,
+              lastModifiedBy: submitterId, // Overwritten with current updater on every modification
             },
           },
           upsert: true,

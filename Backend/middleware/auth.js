@@ -18,30 +18,67 @@ const verifyToken = async (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || "fallback-secret-key-use-env-vars");
 
-    // Server-Side Session Revocation Verification (Phase 3A: Token Versioning)
-    const lookupId = decoded.id || decoded.userId;
-    if (lookupId) {
-      try {
-        const query = User.findOne({
-          $or: [{ _id: lookupId }, { userId: lookupId }],
-        });
-        const user = query && typeof query.select === "function"
-          ? await query.select("tokenVersion status")
-          : await query;
+    // Strict Token Version Validation (Phase 3B: Priority 1)
+    // 1. JWT must contain a valid tokenVersion claim (strictly an integer >= 0)
+    // Missing, undefined, null, non-numeric, or negative claims are strictly rejected.
+    if (
+      decoded.tokenVersion === undefined ||
+      decoded.tokenVersion === null ||
+      typeof decoded.tokenVersion !== "number" ||
+      !Number.isInteger(decoded.tokenVersion) ||
+      decoded.tokenVersion < 0
+    ) {
+      return res.status(401).json({
+        success: false,
+        error: "Unauthorized",
+        message: "Unauthorized: Invalid or missing tokenVersion claim. Please log in again.",
+      });
+    }
 
-        if (user) {
-          const userVersion = user.tokenVersion !== undefined ? user.tokenVersion : 0;
-          const tokenVersion = decoded.tokenVersion !== undefined ? decoded.tokenVersion : 0;
-          if (tokenVersion < userVersion) {
-            return res.status(401).json({
-              success: false,
-              message: "Session invalidated due to password reset. Please log in again.",
-            });
-          }
-        }
-      } catch (dbErr) {
-        // If DB query fails, continue with decoded payload
+    const lookupId = decoded.id || decoded.userId;
+    if (!lookupId) {
+      return res.status(401).json({
+        success: false,
+        error: "Unauthorized",
+        message: "Unauthorized: Missing user identifier claim.",
+      });
+    }
+
+    try {
+      const query = User.findOne({
+        $or: [{ _id: lookupId }, { userId: lookupId }],
+      });
+      const user = query && typeof query.select === "function"
+        ? await query.select("tokenVersion status")
+        : await query;
+
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized",
+          message: "Unauthorized: User account not found.",
+        });
       }
+
+      // Safe and consistent handling for legacy User documents without tokenVersion:
+      const dbVersion = (typeof user.tokenVersion === "number" && Number.isInteger(user.tokenVersion))
+        ? user.tokenVersion
+        : 0;
+
+      // 2. Token version must exactly equal the authenticated user's current database tokenVersion
+      if (decoded.tokenVersion !== dbVersion) {
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized",
+          message: "Session invalidated due to password reset or token version mismatch. Please log in again.",
+        });
+      }
+    } catch (dbErr) {
+      return res.status(500).json({
+        success: false,
+        error: "Internal Server Error",
+        message: "Internal server error during session verification.",
+      });
     }
 
     req.user = decoded;

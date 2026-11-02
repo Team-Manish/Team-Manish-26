@@ -3,9 +3,11 @@ const assert = require("node:assert/strict");
 const mongoose = require("mongoose");
 const crypto = require("crypto");
 const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 
 process.env.NODE_ENV = "test";
 process.env.MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/internship_project_test";
+const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-key-use-env-vars";
 
 const app = require("../app");
 const User = require("../models/User");
@@ -106,6 +108,7 @@ const getCsrfHeaders = async (testKey = "default_test_key") => {
     cookie: `XSRF-TOKEN=${cookieVal}`,
     "x-xsrf-token": token,
     "x-test-key": testKey,
+    "x-test-ip": testKey,
   };
 };
 
@@ -727,6 +730,75 @@ test("HTTP Test 20b: Priority 2: Successful password reset invalidates old Cooki
   assert.equal(meNewRes.status, 200, "New session must be valid and authorized");
 });
 
+test("HTTP Test 20c: Priority 1: Strict Token Version Validation rejects legacy, mismatched, or altered JWTs", async () => {
+  await initMockUsers();
+  const user = mockUsers["parent@school.com"];
+  user.tokenVersion = 0; // Baseline version
+
+  // Case 1: Legacy JWT without tokenVersion claim is strictly rejected with HTTP 401
+  const legacyTokenNoVersion = jwt.sign(
+    { id: user._id, userId: user.userId, email: user.email, role: user.role },
+    JWT_SECRET,
+    { expiresIn: "1h" }
+  );
+  const legacyRes = await fetch(`http://127.0.0.1:${port}/api/auth/me`, {
+    headers: { Authorization: `Bearer ${legacyTokenNoVersion}` },
+  });
+  assert.equal(legacyRes.status, 401, "Legacy JWT without tokenVersion must return HTTP 401");
+  const legacyData = await legacyRes.json();
+  assert.match(legacyData.message, /invalid or missing tokenVersion/i);
+
+  // Case 2: Matching current version (version 0 vs DB version 0) succeeds with HTTP 200
+  const validVersion0Token = jwt.sign(
+    { id: user._id, userId: user.userId, email: user.email, role: user.role, tokenVersion: 0 },
+    JWT_SECRET,
+    { expiresIn: "1h" }
+  );
+  const validRes = await fetch(`http://127.0.0.1:${port}/api/auth/me`, {
+    headers: { Authorization: `Bearer ${validVersion0Token}` },
+  });
+  assert.equal(validRes.status, 200, "Matching tokenVersion must succeed with HTTP 200");
+
+  // Case 3: Version 0 JWT after database version increments to 1 is rejected with HTTP 401
+  user.tokenVersion = 1; // Database version increments (e.g. after password reset)
+  const staleRes = await fetch(`http://127.0.0.1:${port}/api/auth/me`, {
+    headers: { Authorization: `Bearer ${validVersion0Token}` },
+  });
+  assert.equal(staleRes.status, 401, "Version 0 JWT after DB increments to 1 must return HTTP 401");
+  const staleData = await staleRes.json();
+  assert.match(staleData.message, /Session invalidated due to password reset or token version mismatch/i);
+
+  // Case 4: Incorrect / non-matching version (e.g. client tokenVersion: 99 vs DB version: 1) is rejected with HTTP 401
+  const mismatchedToken = jwt.sign(
+    { id: user._id, userId: user.userId, email: user.email, role: user.role, tokenVersion: 99 },
+    JWT_SECRET,
+    { expiresIn: "1h" }
+  );
+  const mismatchedRes = await fetch(`http://127.0.0.1:${port}/api/auth/me`, {
+    headers: { Authorization: `Bearer ${mismatchedToken}` },
+  });
+  assert.equal(mismatchedRes.status, 401, "Mismatched tokenVersion (99 vs 1) must return HTTP 401");
+
+  // Case 5: New login after reset issues token with matching version (1) and succeeds
+  const headers = await getCsrfHeaders("new_login_after_version_inc");
+  const loginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      email: "parent@school.com",
+      password: "InitialPassword123!",
+    }),
+  });
+  assert.equal(loginRes.status, 200, "Login must succeed");
+  const setCookie = loginRes.headers.get("set-cookie") || "";
+  const freshToken = setCookie.match(/auth-token=([^;]+)/)[1];
+
+  const meFreshRes = await fetch(`http://127.0.0.1:${port}/api/auth/me`, {
+    headers: { Authorization: `Bearer ${freshToken}` },
+  });
+  assert.equal(meFreshRes.status, 200, "Fresh session matching current DB tokenVersion must succeed");
+});
+
 test("HTTP Test 21: Password shorter than 8 characters is rejected with HTTP 400 Bad Request", async () => {
   const rawToken = "short_pass_token_555";
   const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
@@ -801,58 +873,62 @@ test("HTTP Test 24: Reset password rate limiter enforces 5-attempt limit and ret
   assert.equal(data.error, "Too Many Requests");
 });
 
-test("HTTP Test 25: Forgot password rate limiter enforces 5-attempt limit per IP+email and returns HTTP 429", async () => {
-  const dedicatedKey = "rate_limit_forgot_test_client";
-  const headers = await getCsrfHeaders(dedicatedKey);
+test("HTTP Test 25: Priority 2: Overall IP Rate Limiter — Repeated requests to multiple different emails from one IP hit the IP limit", async () => {
+  // Attacker uses one IP ("attacker_ip_rotating_emails") and sends requests targeting 10 different email addresses
+  const attackerIp = "attacker_ip_rotating_emails";
 
-  // Send 5 requests with same normalized email
-  for (let i = 0; i < 5; i++) {
+  // Requests 1 through 10 (each to a unique email address) consume the 10-request IP quota
+  for (let i = 1; i <= 10; i++) {
+    const headers = await getCsrfHeaders(attackerIp);
     const res = await fetch(`http://127.0.0.1:${port}/api/auth/forgot-password`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ email: "ratelimit_user@school.com" }),
+      body: JSON.stringify({ email: `unique_user_${i}@school.com` }),
     });
-    assert.equal(res.status, 200);
+    assert.equal(res.status, 200, `Request ${i} with unique email must succeed before reaching IP ceiling`);
   }
 
-  // The 6th request must be rejected with HTTP 429 Too Many Requests
-  const rateLimitedRes = await fetch(`http://127.0.0.1:${port}/api/auth/forgot-password`, {
+  // Request 11 with an 11th distinct email address must be rejected by forgotPasswordIpLimiter with HTTP 429
+  const headers11 = await getCsrfHeaders(attackerIp);
+  const blockedRes = await fetch(`http://127.0.0.1:${port}/api/auth/forgot-password`, {
     method: "POST",
-    headers,
-    body: JSON.stringify({ email: "ratelimit_user@school.com" }),
+    headers: headers11,
+    body: JSON.stringify({ email: "unique_user_11@school.com" }),
   });
 
-  assert.equal(rateLimitedRes.status, 429, "6th attempt must trigger HTTP 429 Too Many Requests");
-  const data = await rateLimitedRes.json();
-  assert.equal(data.success, false);
-  assert.equal(data.error, "Too Many Requests");
+  assert.equal(blockedRes.status, 429, "11th request from same IP must hit overall IP ceiling despite changing email");
+  const blockedData = await blockedRes.json();
+  assert.equal(blockedData.error, "Too Many Requests");
+  assert.match(blockedData.message, /Too many password reset requests from this IP address/i);
 });
 
-test("HTTP Test 25b: Priority 3: Rate Limiting Abuse Resistance — Attacker exhausting victim quota on IP A does not lock out victim on IP B", async () => {
-  const attackerHeaders = await getCsrfHeaders("attacker_ip_111");
-  const victimHeaders = await getCsrfHeaders("victim_legitimate_ip_222");
-
+test("HTTP Test 25b: Priority 2: Account-Level Abuse Isolation — Attacker on IP A does not lock out legitimate victim on IP B", async () => {
+  const attackerIp = "attacker_ip_focused_target";
+  const victimIp = "victim_ip_legitimate_client";
   const targetEmail = "parent@school.com";
 
-  // Attacker spams 5 reset requests for victim's email from attacker's IP
+  // Attacker spams 5 requests for victim's email from attacker's IP
   for (let i = 0; i < 5; i++) {
+    const headers = await getCsrfHeaders(attackerIp);
     const res = await fetch(`http://127.0.0.1:${port}/api/auth/forgot-password`, {
       method: "POST",
-      headers: attackerHeaders,
+      headers,
       body: JSON.stringify({ email: targetEmail }),
     });
     assert.equal(res.status, 200);
   }
 
-  // Attacker is now rate-limited on 6th request
+  // Attacker is now rate-limited on 6th request from attacker IP
+  const headers6 = await getCsrfHeaders(attackerIp);
   const attackerBlockedRes = await fetch(`http://127.0.0.1:${port}/api/auth/forgot-password`, {
     method: "POST",
-    headers: attackerHeaders,
+    headers: headers6,
     body: JSON.stringify({ email: targetEmail }),
   });
-  assert.equal(attackerBlockedRes.status, 429, "Attacker must be rate-limited");
+  assert.equal(attackerBlockedRes.status, 429, "Attacker must be rate-limited on their IP");
 
-  // Legitimate victim on separate IP must NOT be locked out and can initiate recovery
+  // Legitimate victim on separate IP (victimIp) must NOT be locked out and can request recovery
+  const victimHeaders = await getCsrfHeaders(victimIp);
   const victimAllowedRes = await fetch(`http://127.0.0.1:${port}/api/auth/forgot-password`, {
     method: "POST",
     headers: victimHeaders,
@@ -863,6 +939,34 @@ test("HTTP Test 25b: Priority 3: Rate Limiting Abuse Resistance — Attacker exh
   const victimData = await victimAllowedRes.json();
   assert.equal(victimData.success, true);
   assert.equal(victimData.message, "If an account with that email exists, a password reset link has been dispatched.");
+});
+
+test("HTTP Test 25c: Priority 2: Account Enumeration Parity — Existing and nonexistent accounts experience equivalent public responses", async () => {
+  const clientIp = "parity_test_client_ip";
+  const headers = await getCsrfHeaders(clientIp);
+
+  // Request for existing account
+  const existingRes = await fetch(`http://127.0.0.1:${port}/api/auth/forgot-password`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ email: "parent@school.com" }),
+  });
+  assert.equal(existingRes.status, 200);
+  const existingData = await existingRes.json();
+
+  // Request for nonexistent account
+  const nonexistentRes = await fetch(`http://127.0.0.1:${port}/api/auth/forgot-password`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ email: "doesnotexist_9999@school.com" }),
+  });
+  assert.equal(nonexistentRes.status, 200);
+  const nonexistentData = await nonexistentRes.json();
+
+  // Both public payloads must be identical
+  assert.deepEqual(existingData, nonexistentData, "Public response for existing and nonexistent accounts must be strictly identical");
+  assert.equal(existingData.success, true);
+  assert.equal(existingData.message, "If an account with that email exists, a password reset link has been dispatched.");
 });
 
 // ==========================================

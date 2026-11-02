@@ -1,30 +1,24 @@
 import { useState, useEffect } from "react";
-import { useSearchParams, useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { validateResetToken, resetPassword } from "../auth/authService";
+import { extractTokenFromHash, scrubFragmentFromHistory } from "../utils/resetToken";
 import ThemeToggle from "./ThemeToggle";
 import "./ResetPassword.css";
 
 function ResetPassword() {
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  // Extract token from URL fragment (#token=) or fallback to query parameter (?token=)
+  // Extract token strictly from URL fragment (#token=...). Query parameter fallback is completely removed.
   const [token, setToken] = useState(() => {
     if (typeof window !== "undefined") {
-      const hash = window.location.hash || "";
-      if (hash.includes("token=")) {
-        const match = hash.match(/token=([^&]+)/);
-        if (match && match[1]) {
-          const extractedToken = decodeURIComponent(match[1]);
-          // Clean the sensitive token fragment from the visible browser address bar
-          if (window.history && window.history.replaceState) {
-            window.history.replaceState(null, "", window.location.pathname + window.location.search);
-          }
-          return extractedToken;
-        }
+      const extractedToken = extractTokenFromHash(window.location.hash || "");
+      if (extractedToken) {
+        // Scrub the sensitive token fragment from the visible browser address bar and history
+        scrubFragmentFromHistory(window);
+        return extractedToken;
       }
     }
-    return searchParams.get("token") || "";
+    return "";
   });
 
   const [tokenStatus, setTokenStatus] = useState("verifying"); // 'verifying', 'valid', 'invalid'

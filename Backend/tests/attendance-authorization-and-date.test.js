@@ -126,8 +126,8 @@ const mockStudents = {
 };
 
 // Helper to generate signed JWT token
-const createAuthToken = (userId, role = "user") => {
-  return jwt.sign({ id: userId, role }, JWT_SECRET, { expiresIn: "1h" });
+const createAuthToken = (userId, role = "user", tokenVersion = 0) => {
+  return jwt.sign({ id: userId, role, tokenVersion }, JWT_SECRET, { expiresIn: "1h" });
 };
 
 // Helper to construct headers with matching CSRF cookie and header

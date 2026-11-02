@@ -152,15 +152,35 @@ const authorize = (requiredRoles, options = {}) => {
         });
       }
 
-      // Server-Side Session Invalidation Verification (Phase 3A: Token Versioning)
-      const userVersion = user.tokenVersion || 0;
-      const tokenVersion = decoded.tokenVersion || 0;
-      if (tokenVersion < userVersion) {
-        logSecurityEvent("warn", "AUTH_SESSION_REVOKED", `Session invalidated due to password reset for user '${userId}'`, req, { userId });
+      // Strict Token Version Validation (Phase 3B: Priority 1)
+      // 1. JWT must contain a valid tokenVersion claim (strictly an integer >= 0)
+      if (
+        decoded.tokenVersion === undefined ||
+        decoded.tokenVersion === null ||
+        typeof decoded.tokenVersion !== "number" ||
+        !Number.isInteger(decoded.tokenVersion) ||
+        decoded.tokenVersion < 0
+      ) {
+        logSecurityEvent("warn", "AUTH_INVALID_TOKEN_VERSION", `JWT missing or invalid tokenVersion claim for user '${userId}'`, req, { userId });
         return res.status(401).json({
           success: false,
           error: "Unauthorized",
-          message: "Unauthorized: Session has been invalidated due to a password reset. Please log in again.",
+          message: "Unauthorized: Invalid or missing tokenVersion claim. Please log in again.",
+        });
+      }
+
+      // 2. Safe and consistent handling for legacy User documents without tokenVersion
+      const userVersion = (typeof user.tokenVersion === "number" && Number.isInteger(user.tokenVersion))
+        ? user.tokenVersion
+        : 0;
+
+      // 3. Version must exactly equal the authenticated user's current database tokenVersion
+      if (decoded.tokenVersion !== userVersion) {
+        logSecurityEvent("warn", "AUTH_SESSION_REVOKED", `Session invalidated due to password reset or token version mismatch for user '${userId}'`, req, { userId, tokenVersion: decoded.tokenVersion, userVersion });
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized",
+          message: "Unauthorized: Session has been invalidated due to a password reset or token version mismatch. Please log in again.",
         });
       }
 

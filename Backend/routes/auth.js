@@ -23,22 +23,50 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Rate limiting for forgot-password requests (keyed by IP + normalized email)
-const forgotPasswordLimiter = rateLimit({
+// Rate limiting for forgot-password requests (Phase 3B: Priority 2)
+// Control 1: Overall IP-based limiter enforcing a hard request ceiling per IP
+const forgotPasswordIpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 requests per 15 minutes
+  max: 10, // Max 10 requests per 15 minutes per IP across all targeted accounts
   keyGenerator: (req) => {
-    const email = req.body && req.body.email && typeof req.body.email === "string"
-      ? req.body.email.trim().toLowerCase()
-      : "";
-    const clientKey = (process.env.NODE_ENV === "test" && req.headers["x-test-key"]) || req.ip || req.connection?.remoteAddress || "unknown_ip";
-    return email ? `forgot_${clientKey}_${email}` : `forgot_${clientKey}`;
+    return (process.env.NODE_ENV === "test" && req.headers["x-test-ip"])
+      || (process.env.NODE_ENV === "test" && req.headers["x-test-key"])
+      || req.ip
+      || req.connection?.remoteAddress
+      || "unknown_ip";
   },
   validate: { keyGeneratorIpFallback: false },
   message: {
     success: false,
     error: "Too Many Requests",
-    message: "Too many password reset requests. Please try again after 15 minutes.",
+    message: "Too many password reset requests from this IP address. Please try again after 15 minutes.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Control 2: Account-level abuse control per client origin
+// Prevents spamming a specific target account while ensuring an attacker on IP A
+// cannot exhaust the recovery allowance for a legitimate user on IP B.
+const forgotPasswordAccountLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Max 5 requests per 15 minutes for a given account from this client
+  keyGenerator: (req) => {
+    const clientKey = (process.env.NODE_ENV === "test" && req.headers["x-test-ip"])
+      || (process.env.NODE_ENV === "test" && req.headers["x-test-key"])
+      || req.ip
+      || req.connection?.remoteAddress
+      || "unknown_ip";
+    const email = (req.body && req.body.email && typeof req.body.email === "string")
+      ? req.body.email.trim().toLowerCase()
+      : "empty";
+    return `forgot_account_${clientKey}_${email}`;
+  },
+  validate: { keyGeneratorIpFallback: false },
+  message: {
+    success: false,
+    error: "Too Many Requests",
+    message: "Too many password reset requests for this account. Please try again after 15 minutes.",
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -693,7 +721,8 @@ router.get("/me", verifyToken, (req, res) => {
  */
 router.post(
   "/forgot-password",
-  forgotPasswordLimiter,
+  forgotPasswordIpLimiter,
+  forgotPasswordAccountLimiter,
   [
     body("email").isEmail().withMessage("Please enter a valid email address"),
   ],

@@ -44,7 +44,7 @@ const forgotPasswordLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Rate limiting for token validation attempts
+// Rate limiting for token validation attempts (strictly POST body verification)
 const validateResetTokenLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 15,
@@ -154,6 +154,7 @@ router.post(
           email: user.email,
           username: user.username,
           role: user.role,
+          tokenVersion: user.tokenVersion || 0,
         },
         process.env.JWT_SECRET || "fallback-secret-key-use-env-vars",
         {
@@ -683,7 +684,7 @@ router.get("/me", verifyToken, (req, res) => {
 });
 
 /**
- * POST /api/auth/forgot-password (Phase 3: Hardened Password Reset)
+ * POST /api/auth/forgot-password (Phase 3 & 3A: Hardened Password Reset Request)
  * Request password reset token & simulated email notification link.
  *
  * Account Enumeration Protection:
@@ -739,6 +740,10 @@ router.post(
           // Log safe internal warning without leaking recipient email or token
           console.error("Mock email dispatch warning: Failed to record simulated reset notification");
         }
+      } else {
+        // Timing mitigation: perform dummy cryptographic token generation and SHA-256 computation
+        const dummyToken = crypto.randomBytes(32).toString("hex");
+        crypto.createHash("sha256").update(dummyToken).digest("hex");
       }
 
       // Safe, uniform public response (Zero account enumeration)
@@ -758,8 +763,9 @@ router.post(
 );
 
 /**
- * POST /api/auth/validate-reset-token (Phase 3: Hardened Token Verification)
- * Validates reset token via request body to prevent token exposure in URL access logs.
+ * POST /api/auth/validate-reset-token (Phase 3 & 3A: Hardened Token Verification)
+ * Validates reset token strictly via JSON request body to prevent token exposure in URL access logs.
+ * Note: GET /api/auth/validate-reset-token/:token has been completely removed to prevent token-bearing URLs.
  */
 router.post(
   "/validate-reset-token",
@@ -812,52 +818,9 @@ router.post(
 );
 
 /**
- * GET /api/auth/validate-reset-token/:token (Backward Compatibility & Direct Link Verification)
- */
-router.get("/validate-reset-token/:token", validateResetTokenLimiter, async (req, res) => {
-  try {
-    const { token } = req.params;
-    if (!token || !String(token).trim()) {
-      return res.status(400).json({
-        success: false,
-        valid: false,
-        message: "Reset token is required",
-      });
-    }
-
-    const hashedToken = crypto.createHash("sha256").update(String(token).trim()).digest("hex");
-
-    const user = await User.findOne({
-      resetPasswordToken: hashedToken,
-      resetPasswordExpires: { $gt: new Date() },
-    });
-
-    if (!user) {
-      return res.status(400).json({
-        success: false,
-        valid: false,
-        message: "Password reset link is invalid or has expired.",
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      valid: true,
-      message: "Reset token is valid.",
-    });
-  } catch (error) {
-    console.error("Validate reset token error:", error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error validating reset token",
-    });
-  }
-});
-
-/**
- * POST /api/auth/reset-password (Phase 3: Hardened Atomic Password Reset)
- * Validates reset token, consumes it atomically to prevent concurrent reuse,
- * applies bcrypt hash (12 rounds) matching User schema standard, and clears active session cookie.
+ * POST /api/auth/reset-password (Phase 3 & 3A: Hardened Atomic Password Reset)
+ * Validates reset token, consumes it atomically, applies bcrypt hash (12 rounds) matching User schema standard,
+ * atomically increments tokenVersion to invalidate all existing sessions, and clears active session cookie.
  */
 router.post(
   "/reset-password",
@@ -891,9 +854,9 @@ router.post(
       const salt = await bcrypt.genSalt(12);
       const hashedPassword = await bcrypt.hash(password, salt);
 
-      // Atomic token validation and single-use consumption:
-      // Concurrently executing requests with the same token will compete for this update;
-      // only the first request matches and unsets resetPasswordToken, while subsequent requests find null.
+      // Atomic token validation, single-use consumption, and server-side session invalidation:
+      // $inc: { tokenVersion: 1 } atomically increments the version counter, immediately invalidating
+      // all existing Bearer JWTs and cookie JWTs issued under earlier tokenVersion values.
       const updatedUser = await User.findOneAndUpdate(
         {
           resetPasswordToken: hashedToken,
@@ -902,6 +865,7 @@ router.post(
         {
           $set: { password: hashedPassword },
           $unset: { resetPasswordToken: 1, resetPasswordExpires: 1 },
+          $inc: { tokenVersion: 1 },
         },
         { new: true }
       );

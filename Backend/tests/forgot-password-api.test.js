@@ -24,7 +24,7 @@ let originalUserFindOneAndUpdate;
 let mockUsers = {};
 
 /**
- * Initialize test user registry with clean bcrypt hashes (12 rounds)
+ * Initialize test user registry with clean bcrypt hashes (12 rounds) and tokenVersion
  */
 async function initMockUsers() {
   const salt = await bcrypt.genSalt(12);
@@ -39,6 +39,7 @@ async function initMockUsers() {
       name: "Sarah Jenkins",
       role: "parent",
       status: "active",
+      tokenVersion: 0,
       password: initialPasswordHash,
       resetPasswordToken: null,
       resetPasswordExpires: null,
@@ -57,6 +58,7 @@ async function initMockUsers() {
       name: "Dr. Vance",
       role: "teacher",
       status: "active",
+      tokenVersion: 0,
       password: initialPasswordHash,
       resetPasswordToken: null,
       resetPasswordExpires: null,
@@ -75,6 +77,7 @@ async function initMockUsers() {
       name: "Suspended Account",
       role: "user",
       status: "suspended", // Ineligible status
+      tokenVersion: 0,
       password: initialPasswordHash,
       resetPasswordToken: null,
       resetPasswordExpires: null,
@@ -118,6 +121,20 @@ before(async () => {
       const email = String(query.email).trim().toLowerCase();
       return mockUsers[email] || null;
     }
+    if (query.$or) {
+      for (const cond of query.$or) {
+        if (cond._id) {
+          for (const u of Object.values(mockUsers)) {
+            if (u._id === cond._id) return u;
+          }
+        }
+        if (cond.userId) {
+          for (const u of Object.values(mockUsers)) {
+            if (u.userId === cond.userId) return u;
+          }
+        }
+      }
+    }
     if (query.resetPasswordToken) {
       const token = query.resetPasswordToken;
       for (const u of Object.values(mockUsers)) {
@@ -137,7 +154,7 @@ before(async () => {
     return null;
   };
 
-  // Stub User.findOneAndUpdate with database-level atomic token consumption semantics
+  // Stub User.findOneAndUpdate with database-level atomic token consumption & tokenVersion increment semantics
   User.findOneAndUpdate = async (filter, update) => {
     if (filter.resetPasswordToken) {
       const token = filter.resetPasswordToken;
@@ -158,6 +175,11 @@ before(async () => {
           if (update.$unset) {
             if (update.$unset.resetPasswordToken) u.resetPasswordToken = null;
             if (update.$unset.resetPasswordExpires) u.resetPasswordExpires = null;
+          }
+          if (update.$inc) {
+            if (update.$inc.tokenVersion) {
+              u.tokenVersion = (u.tokenVersion || 0) + update.$inc.tokenVersion;
+            }
           }
 
           return u;
@@ -190,21 +212,27 @@ after(async () => {
 // GROUP 1: SCHEMA & UNIT SECURITY TESTS
 // ==========================================
 
-test("Unit Test 1: User Schema includes resetPasswordToken and resetPasswordExpires fields", () => {
+test("Unit Test 1: User Schema includes resetPasswordToken, resetPasswordExpires, and tokenVersion fields", () => {
   const tokenPath = User.schema.path("resetPasswordToken");
   const expiresPath = User.schema.path("resetPasswordExpires");
+  const tokenVersionPath = User.schema.path("tokenVersion");
 
   assert.ok(tokenPath, "resetPasswordToken path must exist on User schema");
   assert.equal(tokenPath.instance, "String");
   assert.ok(expiresPath, "resetPasswordExpires path must exist on User schema");
   assert.equal(expiresPath.instance, "Date");
+  assert.ok(tokenVersionPath, "tokenVersion path must exist on User schema");
+  assert.equal(tokenVersionPath.instance, "Number");
 });
 
-test("Unit Test 2: User Schema indexes include sparse compound index on reset token and expiration", () => {
+test("Unit Test 2: User Schema indexes include sparse compound index on reset token and index on tokenVersion", () => {
   const indexes = User.schema.indexes();
   const tokenIndex = indexes.find((idx) => idx[0] && idx[0].resetPasswordToken === 1 && idx[0].resetPasswordExpires === 1);
   assert.ok(tokenIndex, "Compound index on resetPasswordToken and resetPasswordExpires must be registered");
-  assert.equal(tokenIndex[1].sparse, true, "Index must be sparse");
+  assert.equal(tokenIndex[1].sparse, true, "Token index must be sparse");
+
+  const versionIndex = indexes.find((idx) => idx[0] && idx[0].tokenVersion === 1);
+  assert.ok(versionIndex, "Index on tokenVersion must be registered for fast session invalidation");
 });
 
 test("Unit Test 3: Token Generation & SHA-256 Hashing produces 256-bit entropy and valid digest", () => {
@@ -228,7 +256,7 @@ test("Unit Test 4: Token expiration calculation is strictly 15 minutes (900,000 
 });
 
 // ==========================================
-// GROUP 2: MOCK EMAIL SUBSYSTEM TESTS
+// GROUP 2: MOCK EMAIL SUBSYSTEM & URL FRAGMENT TESTS
 // ==========================================
 
 test("Unit Test 5: Email dispatcher is explicitly identified as simulated / mock delivery", async () => {
@@ -251,7 +279,7 @@ test("Unit Test 5: Email dispatcher is explicitly identified as simulated / mock
   assert.equal(testStore[0].delivered, false);
 });
 
-test("Unit Test 6: Mock email service does not expose raw tokens in public meta or audit", async () => {
+test("Unit Test 6: Mock email service places reset token in URL fragment (#token=) and redacts raw token in meta", async () => {
   clearDispatchedEmailsForTesting();
 
   const secretToken = "super_secret_raw_token_xyz987";
@@ -265,11 +293,28 @@ test("Unit Test 6: Mock email service does not expose raw tokens in public meta 
   const record = testStore[0];
   assert.equal(record.meta.tokenHashPrefix, "supe...", "Meta must only show safe prefix");
   assert.equal(record.meta.resetToken, undefined, "Meta must not leak raw token");
+  assert.ok(
+    record._testPayload.resetUrl.includes("#token="),
+    "Reset link MUST place token in URL fragment (#token=) so browsers do not send token to web servers"
+  );
+  assert.equal(
+    record._testPayload.resetUrl.includes("?token="),
+    false,
+    "Reset link must NOT place token in query string"
+  );
 });
 
 // ==========================================
-// GROUP 3: HTTP TOKEN SECURITY TESTS (Express via Ephemeral Port)
+// GROUP 3: PRIORITY 1 & TOKEN SECURITY TESTS (Express via Ephemeral Port)
 // ==========================================
+
+test("HTTP Test 7b: Priority 1: GET /api/auth/validate-reset-token/:token has been removed and returns HTTP 404", async () => {
+  const res = await fetch(`http://127.0.0.1:${port}/api/auth/validate-reset-token/sample_token_in_path`, {
+    method: "GET",
+  });
+
+  assert.equal(res.status, 404, "GET endpoint with token in path MUST be completely removed and return 404 Not Found");
+});
 
 test("HTTP Test 8: Request password reset stores SHA-256 hash in DB and never stores raw token", async () => {
   clearDispatchedEmailsForTesting();
@@ -340,7 +385,7 @@ test("HTTP Test 10: Invalid/malformed token is rejected by validate-reset-token 
   assert.match(data.message, /invalid or has expired/i);
 });
 
-test("HTTP Test 11: Valid active token is accepted by validate-reset-token with HTTP 200 without exposing user details", async () => {
+test("HTTP Test 11: Valid active token is accepted by validate-reset-token via POST JSON body without exposing user details", async () => {
   const validRawToken = "valid_raw_token_xyz456";
   const validHash = crypto.createHash("sha256").update(validRawToken).digest("hex");
 
@@ -572,6 +617,116 @@ test("HTTP Test 20: New password successfully authenticates on /api/auth/login w
   assert.ok(data.expiresAt);
 });
 
+// ==========================================
+// GROUP 5B: PRIORITY 2 — SERVER-SIDE SESSION INVALIDATION TESTS
+// ==========================================
+
+test("HTTP Test 20b: Priority 2: Successful password reset invalidates old Cookie & Bearer JWTs while new login succeeds", async () => {
+  await initMockUsers();
+
+  const headers = await getCsrfHeaders("session_invalidation_test");
+
+  // Step 1: User logs in before password reset
+  const loginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      email: "parent@school.com",
+      password: "InitialPassword123!",
+    }),
+  });
+
+  assert.equal(loginRes.status, 200);
+  const setCookieHeader = loginRes.headers.get("set-cookie") || "";
+  const authCookieMatch = setCookieHeader.match(/auth-token=([^;]+)/);
+  const initialCookieToken = authCookieMatch ? authCookieMatch[1] : "";
+  assert.ok(initialCookieToken, "Initial login must set auth-token cookie");
+
+  // Step 2: Test active session via Cookie
+  const meCookieRes = await fetch(`http://127.0.0.1:${port}/api/auth/me`, {
+    headers: {
+      cookie: `auth-token=${initialCookieToken}`,
+    },
+  });
+  assert.equal(meCookieRes.status, 200, "Active cookie session must succeed before reset");
+
+  // Step 3: Test active session via Bearer Header
+  const meBearerRes = await fetch(`http://127.0.0.1:${port}/api/auth/me`, {
+    headers: {
+      Authorization: `Bearer ${initialCookieToken}`,
+    },
+  });
+  assert.equal(meBearerRes.status, 200, "Active Bearer session must succeed before reset");
+
+  // Step 4: Merely requesting a password reset does NOT invalidate sessions
+  const forgotRes = await fetch(`http://127.0.0.1:${port}/api/auth/forgot-password`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ email: "parent@school.com" }),
+  });
+  assert.equal(forgotRes.status, 200);
+
+  const meStillActiveRes = await fetch(`http://127.0.0.1:${port}/api/auth/me`, {
+    headers: {
+      Authorization: `Bearer ${initialCookieToken}`,
+    },
+  });
+  assert.equal(meStillActiveRes.status, 200, "Session must NOT be invalidated merely by requesting reset");
+
+  // Step 5: Perform successful password reset
+  const emails = getDispatchedEmailsForTesting();
+  const resetToken = emails[emails.length - 1]._testPayload.resetToken;
+
+  const resetRes = await fetch(`http://127.0.0.1:${port}/api/auth/reset-password`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      token: resetToken,
+      password: "BrandNewPostResetPassword123!",
+    }),
+  });
+  assert.equal(resetRes.status, 200, "Password reset must succeed");
+
+  // Step 6: Verify old Cookie JWT is now rejected with HTTP 401
+  const postResetCookieRes = await fetch(`http://127.0.0.1:${port}/api/auth/me`, {
+    headers: {
+      cookie: `auth-token=${initialCookieToken}`,
+    },
+  });
+  assert.equal(postResetCookieRes.status, 401, "Old Cookie JWT must be rejected with 401 after password reset");
+  const cookieErrData = await postResetCookieRes.json();
+  assert.match(cookieErrData.message, /Session invalidated due to password reset/i);
+
+  // Step 7: Verify old Bearer JWT is now rejected with HTTP 401
+  const postResetBearerRes = await fetch(`http://127.0.0.1:${port}/api/auth/me`, {
+    headers: {
+      Authorization: `Bearer ${initialCookieToken}`,
+    },
+  });
+  assert.equal(postResetBearerRes.status, 401, "Old Bearer JWT must be rejected with 401 after password reset");
+
+  // Step 8: Log in with newly set password
+  const newLoginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      email: "parent@school.com",
+      password: "BrandNewPostResetPassword123!",
+    }),
+  });
+  assert.equal(newLoginRes.status, 200, "Login with new password must succeed");
+  const newSetCookie = newLoginRes.headers.get("set-cookie") || "";
+  const newCookieToken = newSetCookie.match(/auth-token=([^;]+)/)[1];
+
+  // Step 9: Newly authenticated session works normally
+  const meNewRes = await fetch(`http://127.0.0.1:${port}/api/auth/me`, {
+    headers: {
+      Authorization: `Bearer ${newCookieToken}`,
+    },
+  });
+  assert.equal(meNewRes.status, 200, "New session must be valid and authorized");
+});
+
 test("HTTP Test 21: Password shorter than 8 characters is rejected with HTTP 400 Bad Request", async () => {
   const rawToken = "short_pass_token_555";
   const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
@@ -596,7 +751,7 @@ test("HTTP Test 21: Password shorter than 8 characters is rejected with HTTP 400
 });
 
 // ==========================================
-// GROUP 6: RATE LIMITING & INPUT VALIDATION TESTS
+// GROUP 6: RATE LIMITING & ABUSE RESISTANCE TESTS
 // ==========================================
 
 test("HTTP Test 22: Forgot password endpoint validates email format, rejecting invalid emails with HTTP 400", async () => {
@@ -646,7 +801,7 @@ test("HTTP Test 24: Reset password rate limiter enforces 5-attempt limit and ret
   assert.equal(data.error, "Too Many Requests");
 });
 
-test("HTTP Test 25: Forgot password rate limiter enforces 5-attempt limit and returns HTTP 429", async () => {
+test("HTTP Test 25: Forgot password rate limiter enforces 5-attempt limit per IP+email and returns HTTP 429", async () => {
   const dedicatedKey = "rate_limit_forgot_test_client";
   const headers = await getCsrfHeaders(dedicatedKey);
 
@@ -671,6 +826,43 @@ test("HTTP Test 25: Forgot password rate limiter enforces 5-attempt limit and re
   const data = await rateLimitedRes.json();
   assert.equal(data.success, false);
   assert.equal(data.error, "Too Many Requests");
+});
+
+test("HTTP Test 25b: Priority 3: Rate Limiting Abuse Resistance — Attacker exhausting victim quota on IP A does not lock out victim on IP B", async () => {
+  const attackerHeaders = await getCsrfHeaders("attacker_ip_111");
+  const victimHeaders = await getCsrfHeaders("victim_legitimate_ip_222");
+
+  const targetEmail = "parent@school.com";
+
+  // Attacker spams 5 reset requests for victim's email from attacker's IP
+  for (let i = 0; i < 5; i++) {
+    const res = await fetch(`http://127.0.0.1:${port}/api/auth/forgot-password`, {
+      method: "POST",
+      headers: attackerHeaders,
+      body: JSON.stringify({ email: targetEmail }),
+    });
+    assert.equal(res.status, 200);
+  }
+
+  // Attacker is now rate-limited on 6th request
+  const attackerBlockedRes = await fetch(`http://127.0.0.1:${port}/api/auth/forgot-password`, {
+    method: "POST",
+    headers: attackerHeaders,
+    body: JSON.stringify({ email: targetEmail }),
+  });
+  assert.equal(attackerBlockedRes.status, 429, "Attacker must be rate-limited");
+
+  // Legitimate victim on separate IP must NOT be locked out and can initiate recovery
+  const victimAllowedRes = await fetch(`http://127.0.0.1:${port}/api/auth/forgot-password`, {
+    method: "POST",
+    headers: victimHeaders,
+    body: JSON.stringify({ email: targetEmail }),
+  });
+
+  assert.equal(victimAllowedRes.status, 200, "Victim from legitimate IP must NOT be locked out by attacker");
+  const victimData = await victimAllowedRes.json();
+  assert.equal(victimData.success, true);
+  assert.equal(victimData.message, "If an account with that email exists, a password reset link has been dispatched.");
 });
 
 // ==========================================

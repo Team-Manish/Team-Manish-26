@@ -88,6 +88,12 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  // Server-Side Session Invalidation (Phase 3A: Token Versioning)
+  tokenVersion: {
+    type: Number,
+    default: 0,
+    required: true,
+  },
 }, {
   timestamps: true,
   toObject: { getters: true },
@@ -98,6 +104,8 @@ const userSchema = new mongoose.Schema({
 userSchema.index({ role: 1 });
 // Sparse compound index on password reset token and expiration for rapid lookups and atomic consumption
 userSchema.index({ resetPasswordToken: 1, resetPasswordExpires: 1 }, { sparse: true });
+// Index on tokenVersion for fast session validity verification
+userSchema.index({ tokenVersion: 1 });
 
 // Schema-level validation throwing a descriptive MongoServerError on invalid role value
 userSchema.pre("validate", function () {
@@ -147,6 +155,11 @@ userSchema.post(["find", "findOne", "init"], function (docs) {
       doc._doc.role = "user";
     } else if (doc && !doc.role) {
       doc.role = "user";
+    }
+    if (doc && doc._doc && doc._doc.tokenVersion === undefined) {
+      doc._doc.tokenVersion = 0;
+    } else if (doc && doc.tokenVersion === undefined) {
+      doc.tokenVersion = 0;
     }
   });
 });

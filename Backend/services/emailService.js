@@ -6,6 +6,7 @@
  * - NO real email delivery is performed, and no external SMTP server or email provider is connected.
  * - Credentials, raw reset tokens, and full reset URLs containing tokens are STRICTLY REDACTED
  *   from console logs and stdout to prevent token leakage in server logs.
+ * - Reset links use URL fragments (#token=...) to ensure tokens are never transmitted to or logged by web servers.
  * - For automated testing, dispatched payloads are inspectable in-memory when NODE_ENV === 'test'.
  */
 
@@ -47,7 +48,8 @@ async function sendPasswordResetEmail({ name, email, resetToken, resetUrl }) {
   const messageId = `mock_reset_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
   const subject = "🔒 School Portal - Password Reset Request";
   const frontendOrigin = process.env.FRONTEND_ORIGIN || "http://localhost:5173";
-  const derivedResetUrl = resetUrl || `${frontendOrigin}/reset-password?token=${resetToken}`;
+  // Place token in URL fragment (#token=) so browsers do not send the token in HTTP request lines
+  const derivedResetUrl = resetUrl || `${frontendOrigin}/reset-password#token=${resetToken}`;
 
   // Log safe simulated audit line
   logSimulatedDispatch({

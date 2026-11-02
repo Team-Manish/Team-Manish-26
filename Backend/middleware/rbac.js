@@ -152,6 +152,18 @@ const authorize = (requiredRoles, options = {}) => {
         });
       }
 
+      // Server-Side Session Invalidation Verification (Phase 3A: Token Versioning)
+      const userVersion = user.tokenVersion || 0;
+      const tokenVersion = decoded.tokenVersion || 0;
+      if (tokenVersion < userVersion) {
+        logSecurityEvent("warn", "AUTH_SESSION_REVOKED", `Session invalidated due to password reset for user '${userId}'`, req, { userId });
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized",
+          message: "Unauthorized: Session has been invalidated due to a password reset. Please log in again.",
+        });
+      }
+
       const userStatus = user.status || "active";
       if (userStatus !== "active") {
         logSecurityEvent("warn", "AUTH_INACTIVE_ACCOUNT", `User '${userId}' account is in '${userStatus}' state`, req, { userId, userStatus });

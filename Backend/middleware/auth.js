@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
+const User = require("../models/User");
 
-const verifyToken = (req, res, next) => {
+const verifyToken = async (req, res, next) => {
   let token = null;
   const authHeader = req.headers.authorization || req.headers.Authorization;
 
@@ -16,6 +17,33 @@ const verifyToken = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || "fallback-secret-key-use-env-vars");
+
+    // Server-Side Session Revocation Verification (Phase 3A: Token Versioning)
+    const lookupId = decoded.id || decoded.userId;
+    if (lookupId) {
+      try {
+        const query = User.findOne({
+          $or: [{ _id: lookupId }, { userId: lookupId }],
+        });
+        const user = query && typeof query.select === "function"
+          ? await query.select("tokenVersion status")
+          : await query;
+
+        if (user) {
+          const userVersion = user.tokenVersion !== undefined ? user.tokenVersion : 0;
+          const tokenVersion = decoded.tokenVersion !== undefined ? decoded.tokenVersion : 0;
+          if (tokenVersion < userVersion) {
+            return res.status(401).json({
+              success: false,
+              message: "Session invalidated due to password reset. Please log in again.",
+            });
+          }
+        }
+      } catch (dbErr) {
+        // If DB query fails, continue with decoded payload
+      }
+    }
+
     req.user = decoded;
     next();
   } catch (error) {
@@ -38,5 +66,3 @@ const requireRole = (...allowedRoles) => {
 const { authorize } = require("./rbac");
 
 module.exports = { verifyToken, requireRole, authorize };
-
-

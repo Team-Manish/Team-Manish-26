@@ -78,6 +78,30 @@ const mockUsers = {
     role: "student",
     status: "active",
   },
+  "teacher-no-userid": {
+    _id: "teacher-no-userid",
+    email: "nouserid@school.com",
+    role: "teacher",
+    status: "active",
+    assignedStudentIds: ["STU-1001"],
+    // userId intentionally missing
+  },
+  "teacher-whitespace-userid": {
+    _id: "teacher-whitespace-userid",
+    userId: "   ", // invalid whitespace-only userId
+    email: "whitespace@school.com",
+    role: "teacher",
+    status: "active",
+    assignedStudentIds: ["STU-1001"],
+  },
+  "teacher-nonstring-userid": {
+    _id: "teacher-nonstring-userid",
+    userId: 12345, // invalid non-string userId
+    email: "nonstring@school.com",
+    role: "teacher",
+    status: "active",
+    assignedStudentIds: ["STU-1001"],
+  },
 };
 
 const mockStudents = {
@@ -664,6 +688,71 @@ test("HTTP Test 12d: Phase 2A: Updating attendance applies lastModifiedBy of cur
   Object.assign(existingDoc, op.update.$set);
   assert.equal(existingDoc.markedBy, "TCH-2001", "Original markedBy must be preserved on update");
   assert.equal(existingDoc.lastModifiedBy, "TCH-2002", "lastModifiedBy must reflect current modifying user");
+});
+
+test("HTTP Test 12e: Phase 2A: Authenticated request with missing or invalid userId is rejected with HTTP 401 without attempting database write", async () => {
+  let bulkWriteAttempts = 0;
+  const tempBulkWrite = Attendance.bulkWrite;
+  Attendance.bulkWrite = async (ops) => {
+    bulkWriteAttempts++;
+    return { matchedCount: ops.length, modifiedCount: ops.length, upsertedCount: 0 };
+  };
+
+  const payload = {
+    records: [
+      {
+        studentId: "STU-1001",
+        className: "Grade 10-A",
+        date: "2026-07-24",
+        status: "present",
+      },
+    ],
+  };
+
+  // Case 1: Missing userId on authenticated user
+  const tokenNoUserId = createAuthToken("teacher-no-userid", "teacher");
+  const headersNoUserId = createHeaders(tokenNoUserId);
+
+  const resNoUserId = await fetch(`http://127.0.0.1:${port}/api/attendance`, {
+    method: "POST",
+    headers: headersNoUserId,
+    body: JSON.stringify(payload),
+  });
+
+  assert.equal(resNoUserId.status, 401);
+  const dataNoUserId = await resNoUserId.json();
+  assert.equal(dataNoUserId.success, false);
+  assert.equal(dataNoUserId.error, "Unauthorized");
+  assert.match(dataNoUserId.message, /Request lacks a valid authenticated user identifier/i);
+  assert.equal(bulkWriteAttempts, 0, "Zero database writes must be attempted when userId is missing");
+
+  // Case 2: Whitespace-only userId
+  const tokenWhitespace = createAuthToken("teacher-whitespace-userid", "teacher");
+  const headersWhitespace = createHeaders(tokenWhitespace);
+
+  const resWhitespace = await fetch(`http://127.0.0.1:${port}/api/attendance`, {
+    method: "POST",
+    headers: headersWhitespace,
+    body: JSON.stringify(payload),
+  });
+
+  assert.equal(resWhitespace.status, 401);
+  assert.equal(bulkWriteAttempts, 0, "Zero database writes must be attempted when userId is whitespace");
+
+  // Case 3: Non-string userId
+  const tokenNonString = createAuthToken("teacher-nonstring-userid", "teacher");
+  const headersNonString = createHeaders(tokenNonString);
+
+  const resNonString = await fetch(`http://127.0.0.1:${port}/api/attendance`, {
+    method: "POST",
+    headers: headersNonString,
+    body: JSON.stringify(payload),
+  });
+
+  assert.equal(resNonString.status, 401);
+  assert.equal(bulkWriteAttempts, 0, "Zero database writes must be attempted when userId is non-string");
+
+  Attendance.bulkWrite = tempBulkWrite;
 });
 
 test("HTTP Test 13: Priority 4: School spoofing is rejected with HTTP 400 Bad Request", async () => {

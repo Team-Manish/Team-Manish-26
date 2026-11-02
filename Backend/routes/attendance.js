@@ -14,9 +14,9 @@ const attendanceMutationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 60, // 60 write batches per 15 minutes per authenticated user
   keyGenerator: (req) => {
-    // Authenticated user ID (stable identifier prevents school-wide NAT/IP collisions)
-    if (req.user && (req.user.userId || req.user._id || req.user.id)) {
-      return `user_${req.user.userId || req.user._id || req.user.id}`;
+    // Canonical authenticated user ID (stable identifier prevents school-wide NAT/IP collisions)
+    if (req.user && req.user.userId && typeof req.user.userId === "string" && req.user.userId.trim()) {
+      return `user_${String(req.user.userId).trim()}`;
     }
     // Fallback to IP for edge cases / unauthenticated attempts
     return req.ip || req.connection?.remoteAddress || "unknown_ip";
@@ -387,9 +387,18 @@ router.post("/", attendanceMutationLimiter, async (req, res) => {
     }
 
     const isTeacher = req.user.role === "teacher";
-    const submitterId =
-      (req.user && (req.user.userId || req.user.id || (req.user._id && String(req.user._id)))) ||
-      "system";
+
+    // Canonical authenticated user identifier verification (req.user.userId)
+    const rawUserId = req.user && req.user.userId;
+    if (!rawUserId || typeof rawUserId !== "string" || !rawUserId.trim()) {
+      return res.status(401).json({
+        success: false,
+        error: "Unauthorized",
+        message: "Unauthorized: Request lacks a valid authenticated user identifier (userId). Attendance write rejected.",
+      });
+    }
+    const submitterId = String(rawUserId).trim();
+
     const teacherAssignedSet = new Set(
       isTeacher && Array.isArray(req.user.assignedStudentIds)
         ? req.user.assignedStudentIds.map((id) => String(id).trim().toUpperCase())

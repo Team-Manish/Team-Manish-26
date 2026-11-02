@@ -2,9 +2,12 @@ const express = require("express");
 const { body, validationResult } = require("express-validator");
 const jwt = require("jsonwebtoken");
 const rateLimit = require("express-rate-limit");
+const crypto = require("crypto");
+const bcrypt = require("bcrypt");
 const User = require("../models/User");
 const Student = require("../models/Student");
 const { verifyToken, requireRole } = require("../middleware/auth");
+const { sendPasswordResetEmail } = require("../services/emailService");
 
 const router = express.Router();
 
@@ -15,6 +18,57 @@ const loginLimiter = rateLimit({
   message: {
     success: false,
     message: "Too many login attempts. Please try again after 15 minutes.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Rate limiting for forgot-password requests (keyed by IP + normalized email)
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 requests per 15 minutes
+  keyGenerator: (req) => {
+    const email = req.body && req.body.email && typeof req.body.email === "string"
+      ? req.body.email.trim().toLowerCase()
+      : "";
+    const clientKey = (process.env.NODE_ENV === "test" && req.headers["x-test-key"]) || req.ip || req.connection?.remoteAddress || "unknown_ip";
+    return email ? `forgot_${clientKey}_${email}` : `forgot_${clientKey}`;
+  },
+  validate: { keyGeneratorIpFallback: false },
+  message: {
+    success: false,
+    error: "Too Many Requests",
+    message: "Too many password reset requests. Please try again after 15 minutes.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Rate limiting for token validation attempts
+const validateResetTokenLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 15,
+  keyGenerator: (req) => (process.env.NODE_ENV === "test" && req.headers["x-test-key"]) || req.ip || req.connection?.remoteAddress || "unknown_ip",
+  validate: { keyGeneratorIpFallback: false },
+  message: {
+    success: false,
+    error: "Too Many Requests",
+    message: "Too many validation attempts. Please try again after 15 minutes.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Rate limiting for password reset mutation attempts
+const resetPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => (process.env.NODE_ENV === "test" && req.headers["x-test-key"]) || req.ip || req.connection?.remoteAddress || "unknown_ip",
+  validate: { keyGeneratorIpFallback: false },
+  message: {
+    success: false,
+    error: "Too Many Requests",
+    message: "Too many password reset attempts. Please try again after 15 minutes.",
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -628,6 +682,252 @@ router.get("/me", verifyToken, (req, res) => {
   });
 });
 
+/**
+ * POST /api/auth/forgot-password (Phase 3: Hardened Password Reset)
+ * Request password reset token & simulated email notification link.
+ *
+ * Account Enumeration Protection:
+ * Returns an identical HTTP 200 generic message whether the account exists,
+ * does not exist, or is ineligible. Never leaks internal errors or user details.
+ */
+router.post(
+  "/forgot-password",
+  forgotPasswordLimiter,
+  [
+    body("email").isEmail().withMessage("Please enter a valid email address"),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          errors: errors.array().map((err) => ({
+            field: err.param,
+            message: err.msg,
+          })),
+        });
+      }
+
+      const { email } = req.body;
+      const normEmail = String(email).trim().toLowerCase();
+
+      // Canonical account lookup by normalized email
+      const user = await User.findOne({ email: normEmail });
+
+      // If user exists and is active, generate and persist hashed reset token
+      if (user && user.status === "active") {
+        // Cryptographically secure token (32 random bytes -> 64 hex chars)
+        const rawToken = crypto.randomBytes(32).toString("hex");
+        // Store strictly the SHA-256 hash in database
+        const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
+        // Strict 15-minute expiration
+        const resetExpires = new Date(Date.now() + 15 * 60 * 1000);
+
+        user.resetPasswordToken = hashedToken;
+        user.resetPasswordExpires = resetExpires;
+        await user.save();
+
+        // Dispatch simulated email notification (Mock only; raw token is not logged)
+        try {
+          await sendPasswordResetEmail({
+            name: user.name || user.username,
+            email: user.email,
+            resetToken: rawToken,
+          });
+        } catch (emailErr) {
+          // Log safe internal warning without leaking recipient email or token
+          console.error("Mock email dispatch warning: Failed to record simulated reset notification");
+        }
+      }
+
+      // Safe, uniform public response (Zero account enumeration)
+      return res.status(200).json({
+        success: true,
+        message: "If an account with that email exists, a password reset link has been dispatched.",
+      });
+    } catch (error) {
+      console.error("Password reset request error:", error.message);
+      // Even on internal database error during lookup, maintain identical public response
+      return res.status(200).json({
+        success: true,
+        message: "If an account with that email exists, a password reset link has been dispatched.",
+      });
+    }
+  }
+);
+
+/**
+ * POST /api/auth/validate-reset-token (Phase 3: Hardened Token Verification)
+ * Validates reset token via request body to prevent token exposure in URL access logs.
+ */
+router.post(
+  "/validate-reset-token",
+  validateResetTokenLimiter,
+  [
+    body("token").notEmpty().withMessage("Reset token is required"),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          valid: false,
+          message: "Reset token is required",
+        });
+      }
+
+      const { token } = req.body;
+      const rawTokenStr = String(token).trim();
+
+      const hashedToken = crypto.createHash("sha256").update(rawTokenStr).digest("hex");
+
+      const user = await User.findOne({
+        resetPasswordToken: hashedToken,
+        resetPasswordExpires: { $gt: new Date() },
+      });
+
+      if (!user) {
+        return res.status(400).json({
+          success: false,
+          valid: false,
+          message: "Password reset link is invalid or has expired.",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        valid: true,
+        message: "Reset token is valid.",
+      });
+    } catch (error) {
+      console.error("Validate reset token error:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: "Internal server error validating reset token",
+      });
+    }
+  }
+);
+
+/**
+ * GET /api/auth/validate-reset-token/:token (Backward Compatibility & Direct Link Verification)
+ */
+router.get("/validate-reset-token/:token", validateResetTokenLimiter, async (req, res) => {
+  try {
+    const { token } = req.params;
+    if (!token || !String(token).trim()) {
+      return res.status(400).json({
+        success: false,
+        valid: false,
+        message: "Reset token is required",
+      });
+    }
+
+    const hashedToken = crypto.createHash("sha256").update(String(token).trim()).digest("hex");
+
+    const user = await User.findOne({
+      resetPasswordToken: hashedToken,
+      resetPasswordExpires: { $gt: new Date() },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        valid: false,
+        message: "Password reset link is invalid or has expired.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      valid: true,
+      message: "Reset token is valid.",
+    });
+  } catch (error) {
+    console.error("Validate reset token error:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error validating reset token",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/reset-password (Phase 3: Hardened Atomic Password Reset)
+ * Validates reset token, consumes it atomically to prevent concurrent reuse,
+ * applies bcrypt hash (12 rounds) matching User schema standard, and clears active session cookie.
+ */
+router.post(
+  "/reset-password",
+  resetPasswordLimiter,
+  [
+    body("token").notEmpty().withMessage("Reset token is required"),
+    body("password")
+      .isLength({ min: 8 })
+      .withMessage("Password must be at least 8 characters long"),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          errors: errors.array().map((err) => ({
+            field: err.param,
+            message: err.msg,
+          })),
+        });
+      }
+
+      const { token, password } = req.body;
+      const rawTokenStr = String(token).trim();
+
+      // Compute SHA-256 hash of provided token
+      const hashedToken = crypto.createHash("sha256").update(rawTokenStr).digest("hex");
+
+      // Hash new password using canonical bcrypt cost factor (12 rounds)
+      const salt = await bcrypt.genSalt(12);
+      const hashedPassword = await bcrypt.hash(password, salt);
+
+      // Atomic token validation and single-use consumption:
+      // Concurrently executing requests with the same token will compete for this update;
+      // only the first request matches and unsets resetPasswordToken, while subsequent requests find null.
+      const updatedUser = await User.findOneAndUpdate(
+        {
+          resetPasswordToken: hashedToken,
+          resetPasswordExpires: { $gt: new Date() },
+        },
+        {
+          $set: { password: hashedPassword },
+          $unset: { resetPasswordToken: 1, resetPasswordExpires: 1 },
+        },
+        { new: true }
+      );
+
+      if (!updatedUser) {
+        return res.status(400).json({
+          success: false,
+          message: "Password reset token is invalid or has expired.",
+        });
+      }
+
+      // Invalidate existing browser session cookie
+      res.clearCookie("auth-token");
+
+      return res.status(200).json({
+        success: true,
+        message: "Password updated successfully! You can now log in with your new password.",
+      });
+    } catch (error) {
+      console.error("Reset password error:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: "Internal server error during password reset",
+      });
+    }
+  }
+);
+
 module.exports = router;
-
-

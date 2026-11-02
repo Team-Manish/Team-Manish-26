@@ -78,6 +78,16 @@ const userSchema = new mongoose.Schema({
     type: [String],
     default: [],
   },
+  // Password Reset Subsystem (Phase 3: Hardened Token Storage)
+  resetPasswordToken: {
+    type: String,
+    default: null,
+    trim: true,
+  },
+  resetPasswordExpires: {
+    type: Date,
+    default: null,
+  },
 }, {
   timestamps: true,
   toObject: { getters: true },
@@ -86,6 +96,8 @@ const userSchema = new mongoose.Schema({
 
 // Explicit performance index on role field for fast role-filtered searches
 userSchema.index({ role: 1 });
+// Sparse compound index on password reset token and expiration for rapid lookups and atomic consumption
+userSchema.index({ resetPasswordToken: 1, resetPasswordExpires: 1 }, { sparse: true });
 
 // Schema-level validation throwing a descriptive MongoServerError on invalid role value
 userSchema.pre("validate", function () {
@@ -144,5 +156,3 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 };
 
 module.exports = mongoose.model("User", userSchema);
-
-

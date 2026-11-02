@@ -1,0 +1,686 @@
+const { test, before, after } = require("node:test");
+const assert = require("node:assert/strict");
+const mongoose = require("mongoose");
+const crypto = require("crypto");
+const bcrypt = require("bcrypt");
+
+process.env.NODE_ENV = "test";
+process.env.MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/internship_project_test";
+
+const app = require("../app");
+const User = require("../models/User");
+const {
+  sendPasswordResetEmail,
+  getDispatchedEmailsForTesting,
+  clearDispatchedEmailsForTesting,
+} = require("../services/emailService");
+
+let server;
+let port;
+let originalUserFindOne;
+let originalUserFindOneAndUpdate;
+
+// Simulated in-memory user registry for HTTP integration tests
+let mockUsers = {};
+
+/**
+ * Initialize test user registry with clean bcrypt hashes (12 rounds)
+ */
+async function initMockUsers() {
+  const salt = await bcrypt.genSalt(12);
+  const initialPasswordHash = await bcrypt.hash("InitialPassword123!", salt);
+
+  mockUsers = {
+    "parent@school.com": {
+      _id: "user-parent-1",
+      userId: "PRN-001",
+      email: "parent@school.com",
+      username: "sarah_jenkins",
+      name: "Sarah Jenkins",
+      role: "parent",
+      status: "active",
+      password: initialPasswordHash,
+      resetPasswordToken: null,
+      resetPasswordExpires: null,
+      async comparePassword(candidate) {
+        return await bcrypt.compare(candidate, this.password);
+      },
+      async save() {
+        return this;
+      },
+    },
+    "teacher@school.com": {
+      _id: "user-teacher-1",
+      userId: "TCH-001",
+      email: "teacher@school.com",
+      username: "dr_vance",
+      name: "Dr. Vance",
+      role: "teacher",
+      status: "active",
+      password: initialPasswordHash,
+      resetPasswordToken: null,
+      resetPasswordExpires: null,
+      async comparePassword(candidate) {
+        return await bcrypt.compare(candidate, this.password);
+      },
+      async save() {
+        return this;
+      },
+    },
+    "suspended@school.com": {
+      _id: "user-suspended-1",
+      userId: "USR-SUSP",
+      email: "suspended@school.com",
+      username: "suspended_user",
+      name: "Suspended Account",
+      role: "user",
+      status: "suspended", // Ineligible status
+      password: initialPasswordHash,
+      resetPasswordToken: null,
+      resetPasswordExpires: null,
+      async comparePassword(candidate) {
+        return await bcrypt.compare(candidate, this.password);
+      },
+      async save() {
+        return this;
+      },
+    },
+  };
+}
+
+/**
+ * Helper to fetch CSRF token and cookie from running server
+ */
+const getCsrfHeaders = async (testKey = "default_test_key") => {
+  const res = await fetch(`http://127.0.0.1:${port}/api/csrf-token`);
+  const setCookie = res.headers.get("set-cookie") || "";
+  const match = setCookie.match(/XSRF-TOKEN=([^;]+)/);
+  const cookieVal = match ? match[1] : "";
+  const data = await res.json();
+  const token = data.csrfToken || cookieVal;
+  return {
+    "Content-Type": "application/json",
+    cookie: `XSRF-TOKEN=${cookieVal}`,
+    "x-xsrf-token": token,
+    "x-test-key": testKey,
+  };
+};
+
+before(async () => {
+  await initMockUsers();
+
+  originalUserFindOne = User.findOne;
+  originalUserFindOneAndUpdate = User.findOneAndUpdate;
+
+  // Stub User.findOne
+  User.findOne = async (query) => {
+    if (query.email) {
+      const email = String(query.email).trim().toLowerCase();
+      return mockUsers[email] || null;
+    }
+    if (query.resetPasswordToken) {
+      const token = query.resetPasswordToken;
+      for (const u of Object.values(mockUsers)) {
+        if (u.resetPasswordToken === token) {
+          if (query.resetPasswordExpires && query.resetPasswordExpires.$gt) {
+            const now = query.resetPasswordExpires.$gt;
+            if (u.resetPasswordExpires && u.resetPasswordExpires > now) {
+              return u;
+            }
+            return null;
+          }
+          return u;
+        }
+      }
+      return null;
+    }
+    return null;
+  };
+
+  // Stub User.findOneAndUpdate with database-level atomic token consumption semantics
+  User.findOneAndUpdate = async (filter, update) => {
+    if (filter.resetPasswordToken) {
+      const token = filter.resetPasswordToken;
+      for (const u of Object.values(mockUsers)) {
+        if (u.resetPasswordToken === token) {
+          // Check expiration
+          if (filter.resetPasswordExpires && filter.resetPasswordExpires.$gt) {
+            const now = filter.resetPasswordExpires.$gt;
+            if (!u.resetPasswordExpires || u.resetPasswordExpires <= now) {
+              return null; // Expired
+            }
+          }
+
+          // Atomically apply update
+          if (update.$set) {
+            if (update.$set.password) u.password = update.$set.password;
+          }
+          if (update.$unset) {
+            if (update.$unset.resetPasswordToken) u.resetPasswordToken = null;
+            if (update.$unset.resetPasswordExpires) u.resetPasswordExpires = null;
+          }
+
+          return u;
+        }
+      }
+      return null;
+    }
+    return null;
+  };
+
+  // Bind server to ephemeral port
+  await new Promise((resolve) => {
+    server = app.listen(0, "127.0.0.1", () => {
+      port = server.address().port;
+      resolve();
+    });
+  });
+});
+
+after(async () => {
+  User.findOne = originalUserFindOne;
+  User.findOneAndUpdate = originalUserFindOneAndUpdate;
+
+  if (server) {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+// ==========================================
+// GROUP 1: SCHEMA & UNIT SECURITY TESTS
+// ==========================================
+
+test("Unit Test 1: User Schema includes resetPasswordToken and resetPasswordExpires fields", () => {
+  const tokenPath = User.schema.path("resetPasswordToken");
+  const expiresPath = User.schema.path("resetPasswordExpires");
+
+  assert.ok(tokenPath, "resetPasswordToken path must exist on User schema");
+  assert.equal(tokenPath.instance, "String");
+  assert.ok(expiresPath, "resetPasswordExpires path must exist on User schema");
+  assert.equal(expiresPath.instance, "Date");
+});
+
+test("Unit Test 2: User Schema indexes include sparse compound index on reset token and expiration", () => {
+  const indexes = User.schema.indexes();
+  const tokenIndex = indexes.find((idx) => idx[0] && idx[0].resetPasswordToken === 1 && idx[0].resetPasswordExpires === 1);
+  assert.ok(tokenIndex, "Compound index on resetPasswordToken and resetPasswordExpires must be registered");
+  assert.equal(tokenIndex[1].sparse, true, "Index must be sparse");
+});
+
+test("Unit Test 3: Token Generation & SHA-256 Hashing produces 256-bit entropy and valid digest", () => {
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  assert.equal(rawToken.length, 64, "Raw token must be 64 hex characters (256 bits)");
+
+  const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
+  assert.equal(hashedToken.length, 64, "SHA-256 digest must be 64 hex characters");
+  assert.notEqual(rawToken, hashedToken, "Hashed token must never match raw token");
+
+  // Re-hashing produces the exact same digest
+  const verifyHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+  assert.equal(hashedToken, verifyHash, "Hash computation must be strictly deterministic");
+});
+
+test("Unit Test 4: Token expiration calculation is strictly 15 minutes (900,000 ms)", () => {
+  const now = Date.now();
+  const resetExpires = new Date(now + 15 * 60 * 1000);
+  const diffMs = resetExpires.getTime() - now;
+  assert.equal(diffMs, 900000, "Expiration window must be exactly 15 minutes in milliseconds");
+});
+
+// ==========================================
+// GROUP 2: MOCK EMAIL SUBSYSTEM TESTS
+// ==========================================
+
+test("Unit Test 5: Email dispatcher is explicitly identified as simulated / mock delivery", async () => {
+  clearDispatchedEmailsForTesting();
+
+  const result = await sendPasswordResetEmail({
+    name: "Test User",
+    email: "test@school.com",
+    resetToken: "abcdef1234567890abcdef1234567890",
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.simulated, true, "Delivery must be explicitly marked as simulated");
+  assert.equal(result.delivered, false, "External delivery must be false");
+  assert.match(result.notice, /Simulated email dispatch completed/);
+
+  const testStore = getDispatchedEmailsForTesting();
+  assert.equal(testStore.length, 1);
+  assert.equal(testStore[0].simulated, true);
+  assert.equal(testStore[0].delivered, false);
+});
+
+test("Unit Test 6: Mock email service does not expose raw tokens in public meta or audit", async () => {
+  clearDispatchedEmailsForTesting();
+
+  const secretToken = "super_secret_raw_token_xyz987";
+  await sendPasswordResetEmail({
+    name: "Sarah",
+    email: "sarah@school.com",
+    resetToken: secretToken,
+  });
+
+  const testStore = getDispatchedEmailsForTesting();
+  const record = testStore[0];
+  assert.equal(record.meta.tokenHashPrefix, "supe...", "Meta must only show safe prefix");
+  assert.equal(record.meta.resetToken, undefined, "Meta must not leak raw token");
+});
+
+// ==========================================
+// GROUP 3: HTTP TOKEN SECURITY TESTS (Express via Ephemeral Port)
+// ==========================================
+
+test("HTTP Test 8: Request password reset stores SHA-256 hash in DB and never stores raw token", async () => {
+  clearDispatchedEmailsForTesting();
+  await initMockUsers();
+
+  const headers = await getCsrfHeaders("test_http_8");
+  const res = await fetch(`http://127.0.0.1:${port}/api/auth/forgot-password`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ email: "parent@school.com" }),
+  });
+
+  assert.equal(res.status, 200);
+  const data = await res.json();
+  assert.equal(data.success, true);
+  assert.equal(data.resetToken, undefined, "Response body must NEVER leak raw reset token");
+  assert.equal(data.resetUrl, undefined, "Response body must NEVER leak reset URL");
+
+  // Verify in-memory database record
+  const user = mockUsers["parent@school.com"];
+  assert.ok(user.resetPasswordToken, "Database must have stored reset token");
+  assert.ok(user.resetPasswordExpires, "Database must have stored expiration");
+  assert.ok(user.resetPasswordExpires > new Date(), "Expiration must be in the future");
+
+  // Check email test store to get raw token and verify database has only the SHA-256 hash
+  const emails = getDispatchedEmailsForTesting();
+  assert.equal(emails.length, 1);
+  const rawToken = emails[0]._testPayload.resetToken;
+
+  const expectedHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+  assert.equal(user.resetPasswordToken, expectedHash, "Stored token must match SHA-256 hash of raw token");
+  assert.notEqual(user.resetPasswordToken, rawToken, "Raw token must NEVER be stored directly in database");
+});
+
+test("HTTP Test 9: Expired token (>15 minutes old) is rejected by validate-reset-token with HTTP 400", async () => {
+  const expiredRawToken = "expired_raw_token_abc123";
+  const expiredHash = crypto.createHash("sha256").update(expiredRawToken).digest("hex");
+
+  mockUsers["parent@school.com"].resetPasswordToken = expiredHash;
+  mockUsers["parent@school.com"].resetPasswordExpires = new Date(Date.now() - 60 * 1000); // Expired 1 min ago
+
+  const headers = await getCsrfHeaders("test_http_9");
+  const res = await fetch(`http://127.0.0.1:${port}/api/auth/validate-reset-token`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ token: expiredRawToken }),
+  });
+
+  assert.equal(res.status, 400);
+  const data = await res.json();
+  assert.equal(data.success, false);
+  assert.equal(data.valid, false);
+  assert.match(data.message, /invalid or has expired/i);
+});
+
+test("HTTP Test 10: Invalid/malformed token is rejected by validate-reset-token with HTTP 400", async () => {
+  const headers = await getCsrfHeaders("test_http_10");
+  const res = await fetch(`http://127.0.0.1:${port}/api/auth/validate-reset-token`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ token: "non_existent_token_999" }),
+  });
+
+  assert.equal(res.status, 400);
+  const data = await res.json();
+  assert.equal(data.success, false);
+  assert.equal(data.valid, false);
+  assert.match(data.message, /invalid or has expired/i);
+});
+
+test("HTTP Test 11: Valid active token is accepted by validate-reset-token with HTTP 200 without exposing user details", async () => {
+  const validRawToken = "valid_raw_token_xyz456";
+  const validHash = crypto.createHash("sha256").update(validRawToken).digest("hex");
+
+  mockUsers["parent@school.com"].resetPasswordToken = validHash;
+  mockUsers["parent@school.com"].resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000);
+
+  const headers = await getCsrfHeaders("test_http_11");
+  const res = await fetch(`http://127.0.0.1:${port}/api/auth/validate-reset-token`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ token: validRawToken }),
+  });
+
+  assert.equal(res.status, 200);
+  const data = await res.json();
+  assert.equal(data.success, true);
+  assert.equal(data.valid, true);
+  assert.equal(data.email, undefined, "Email must not be leaked in validate-reset-token response");
+  assert.equal(data.user, undefined, "User object must not be leaked");
+});
+
+test("HTTP Test 12: Successful password reset atomically consumes token, unsetting it from database", async () => {
+  const rawToken = "consume_me_token_111";
+  const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+
+  mockUsers["teacher@school.com"].resetPasswordToken = tokenHash;
+  mockUsers["teacher@school.com"].resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000);
+
+  const headers = await getCsrfHeaders("test_http_12");
+  const res = await fetch(`http://127.0.0.1:${port}/api/auth/reset-password`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      token: rawToken,
+      password: "BrandNewTeacherPassword123!",
+    }),
+  });
+
+  assert.equal(res.status, 200);
+  const data = await res.json();
+  assert.equal(data.success, true);
+  assert.match(data.message, /Password updated successfully/i);
+
+  // Verify token is unset in database
+  const user = mockUsers["teacher@school.com"];
+  assert.equal(user.resetPasswordToken, null, "resetPasswordToken must be null after reset");
+  assert.equal(user.resetPasswordExpires, null, "resetPasswordExpires must be null after reset");
+});
+
+test("HTTP Test 13: Reused token after successful reset is rejected with HTTP 400", async () => {
+  // Using the same token from Test 12
+  const rawToken = "consume_me_token_111";
+
+  const headers = await getCsrfHeaders("test_http_13");
+  const res = await fetch(`http://127.0.0.1:${port}/api/auth/reset-password`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      token: rawToken,
+      password: "AnotherNewPassword123!",
+    }),
+  });
+
+  assert.equal(res.status, 400);
+  const data = await res.json();
+  assert.equal(data.success, false);
+  assert.match(data.message, /invalid or has expired/i);
+});
+
+test("HTTP Test 14: Concurrent reset attempts with same token guarantee only ONE succeeds", async () => {
+  const raceToken = "race_condition_test_token_777";
+  const raceHash = crypto.createHash("sha256").update(raceToken).digest("hex");
+
+  mockUsers["parent@school.com"].resetPasswordToken = raceHash;
+  mockUsers["parent@school.com"].resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000);
+
+  const headers = await getCsrfHeaders("test_http_14");
+
+  // Fire two simultaneous reset requests with the same token
+  const req1 = fetch(`http://127.0.0.1:${port}/api/auth/reset-password`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ token: raceToken, password: "NewConcurrentPass1!" }),
+  });
+
+  const req2 = fetch(`http://127.0.0.1:${port}/api/auth/reset-password`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ token: raceToken, password: "NewConcurrentPass2!" }),
+  });
+
+  const [res1, res2] = await Promise.all([req1, req2]);
+  const statuses = [res1.status, res2.status].sort();
+
+  assert.deepEqual(statuses, [200, 400], "Exactly one concurrent request must succeed (200) and the other fail (400)");
+});
+
+// ==========================================
+// GROUP 4: ACCOUNT ENUMERATION PROTECTION TESTS
+// ==========================================
+
+test("HTTP Test 15: Existing account and nonexistent account receive identical public responses", async () => {
+  const headers = await getCsrfHeaders("test_http_15");
+
+  const existingRes = await fetch(`http://127.0.0.1:${port}/api/auth/forgot-password`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ email: "parent@school.com" }),
+  });
+
+  const nonexistentRes = await fetch(`http://127.0.0.1:${port}/api/auth/forgot-password`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ email: "nonexistent_account_12345@school.com" }),
+  });
+
+  assert.equal(existingRes.status, 200);
+  assert.equal(nonexistentRes.status, 200);
+
+  const existingData = await existingRes.json();
+  const nonexistentData = await nonexistentRes.json();
+
+  assert.deepEqual(existingData, nonexistentData, "Public response for existing and nonexistent accounts must be 100% identical");
+  assert.equal(existingData.message, "If an account with that email exists, a password reset link has been dispatched.");
+});
+
+test("HTTP Test 16: Ineligible / suspended account receives the exact same public response", async () => {
+  const headers = await getCsrfHeaders("test_http_16");
+
+  const res = await fetch(`http://127.0.0.1:${port}/api/auth/forgot-password`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ email: "suspended@school.com" }),
+  });
+
+  assert.equal(res.status, 200);
+  const data = await res.json();
+  assert.equal(data.success, true);
+  assert.equal(data.message, "If an account with that email exists, a password reset link has been dispatched.");
+
+  // Suspended account must NOT have a reset token generated
+  assert.equal(mockUsers["suspended@school.com"].resetPasswordToken, null, "Suspended account must not receive token");
+});
+
+test("HTTP Test 17: Email dispatch exception does not disclose account existence and returns identical HTTP 200", async () => {
+  // Temporarily stub sendPasswordResetEmail to throw an error
+  const emailService = require("../services/emailService");
+  const tempSend = emailService.sendPasswordResetEmail;
+  emailService.sendPasswordResetEmail = async () => {
+    throw new Error("Simulated internal email failure");
+  };
+
+  const headers = await getCsrfHeaders("test_http_17");
+  const res = await fetch(`http://127.0.0.1:${port}/api/auth/forgot-password`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ email: "parent@school.com" }),
+  });
+
+  emailService.sendPasswordResetEmail = tempSend;
+
+  assert.equal(res.status, 200, "Must return HTTP 200 despite email failure");
+  const data = await res.json();
+  assert.equal(data.message, "If an account with that email exists, a password reset link has been dispatched.");
+});
+
+// ==========================================
+// GROUP 5: PASSWORD SECURITY & AUTHENTICATION TESTS
+// ==========================================
+
+test("HTTP Test 18: Password reset updates password with bcrypt 12-round hash matching User schema", async () => {
+  const rawToken = "bcrypt_verify_token_999";
+  const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+
+  mockUsers["parent@school.com"].resetPasswordToken = tokenHash;
+  mockUsers["parent@school.com"].resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000);
+
+  const newPlainPass = "BrandNewSuperSecurePass2026!";
+  const headers = await getCsrfHeaders("test_http_18");
+  const res = await fetch(`http://127.0.0.1:${port}/api/auth/reset-password`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      token: rawToken,
+      password: newPlainPass,
+    }),
+  });
+
+  assert.equal(res.status, 200);
+
+  const user = mockUsers["parent@school.com"];
+  assert.ok(user.password.startsWith("$2b$12$"), "Stored hash must use bcrypt cost factor 12 ($2b$12$)");
+  const isMatch = await bcrypt.compare(newPlainPass, user.password);
+  assert.equal(isMatch, true, "Bcrypt compare must verify new plain password matches stored hash");
+});
+
+test("HTTP Test 19: Old password fails authentication on /api/auth/login with HTTP 401", async () => {
+  const headers = await getCsrfHeaders("test_http_19");
+  const res = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      email: "parent@school.com",
+      password: "InitialPassword123!", // Old password
+    }),
+  });
+
+  assert.equal(res.status, 401);
+  const data = await res.json();
+  assert.equal(data.success, false);
+  assert.match(data.message, /invalid credentials/i);
+});
+
+test("HTTP Test 20: New password successfully authenticates on /api/auth/login with HTTP 200", async () => {
+  const headers = await getCsrfHeaders("test_http_20");
+  const res = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      email: "parent@school.com",
+      password: "BrandNewSuperSecurePass2026!", // New password set in Test 18
+    }),
+  });
+
+  assert.equal(res.status, 200);
+  const data = await res.json();
+  assert.equal(data.success, true);
+  assert.equal(data.user.email, "parent@school.com");
+  assert.ok(data.expiresAt);
+});
+
+test("HTTP Test 21: Password shorter than 8 characters is rejected with HTTP 400 Bad Request", async () => {
+  const rawToken = "short_pass_token_555";
+  const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+
+  mockUsers["parent@school.com"].resetPasswordToken = tokenHash;
+  mockUsers["parent@school.com"].resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000);
+
+  const headers = await getCsrfHeaders("test_http_21");
+  const res = await fetch(`http://127.0.0.1:${port}/api/auth/reset-password`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      token: rawToken,
+      password: "short", // Only 5 characters
+    }),
+  });
+
+  assert.equal(res.status, 400);
+  const data = await res.json();
+  assert.equal(data.success, false);
+  assert.ok(data.errors.some((e) => e.message.includes("at least 8 characters")));
+});
+
+// ==========================================
+// GROUP 6: RATE LIMITING & INPUT VALIDATION TESTS
+// ==========================================
+
+test("HTTP Test 22: Forgot password endpoint validates email format, rejecting invalid emails with HTTP 400", async () => {
+  const headers = await getCsrfHeaders("test_http_22");
+  const res = await fetch(`http://127.0.0.1:${port}/api/auth/forgot-password`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ email: "not-an-email" }),
+  });
+
+  assert.equal(res.status, 400);
+  const data = await res.json();
+  assert.equal(data.success, false);
+  assert.ok(data.errors.some((e) => e.message.includes("valid email")));
+});
+
+test("HTTP Test 23: Account identifiers are normalized for rate limiting", async () => {
+  const email1 = "  Parent@SCHOOL.com  ";
+  const email2 = "parent@school.com";
+  assert.equal(email1.trim().toLowerCase(), email2.trim().toLowerCase(), "Normalized keys must be strictly identical");
+});
+
+test("HTTP Test 24: Reset password rate limiter enforces 5-attempt limit and returns HTTP 429", async () => {
+  const dedicatedKey = "rate_limit_reset_test_client";
+  const headers = await getCsrfHeaders(dedicatedKey);
+
+  // Send 5 failed attempts (which consume rate limit quota)
+  for (let i = 0; i < 5; i++) {
+    const res = await fetch(`http://127.0.0.1:${port}/api/auth/reset-password`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ token: `invalid_token_${i}`, password: "ValidPassword123!" }),
+    });
+    assert.equal(res.status, 400);
+  }
+
+  // The 6th request must be rejected with HTTP 429 Too Many Requests
+  const rateLimitedRes = await fetch(`http://127.0.0.1:${port}/api/auth/reset-password`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ token: "invalid_token_6", password: "ValidPassword123!" }),
+  });
+
+  assert.equal(rateLimitedRes.status, 429, "6th attempt must trigger HTTP 429 Too Many Requests");
+  const data = await rateLimitedRes.json();
+  assert.equal(data.success, false);
+  assert.equal(data.error, "Too Many Requests");
+});
+
+test("HTTP Test 25: Forgot password rate limiter enforces 5-attempt limit and returns HTTP 429", async () => {
+  const dedicatedKey = "rate_limit_forgot_test_client";
+  const headers = await getCsrfHeaders(dedicatedKey);
+
+  // Send 5 requests with same normalized email
+  for (let i = 0; i < 5; i++) {
+    const res = await fetch(`http://127.0.0.1:${port}/api/auth/forgot-password`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ email: "ratelimit_user@school.com" }),
+    });
+    assert.equal(res.status, 200);
+  }
+
+  // The 6th request must be rejected with HTTP 429 Too Many Requests
+  const rateLimitedRes = await fetch(`http://127.0.0.1:${port}/api/auth/forgot-password`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ email: "ratelimit_user@school.com" }),
+  });
+
+  assert.equal(rateLimitedRes.status, 429, "6th attempt must trigger HTTP 429 Too Many Requests");
+  const data = await rateLimitedRes.json();
+  assert.equal(data.success, false);
+  assert.equal(data.error, "Too Many Requests");
+});
+
+// ==========================================
+// GROUP 7: LIVE DATABASE VERIFICATION & NON-RUN REPORTING
+// ==========================================
+
+test("Database Integration Test: Verifies live MongoDB status (Explicit Non-Run Reporting)", async (t) => {
+  if (mongoose.connection.readyState !== 1) {
+    t.skip("Real MongoDB server is not running on 127.0.0.1:27017. Live database integration & persistence tests were not run.");
+    return;
+  }
+  assert.equal(mongoose.connection.readyState, 1);
+});

@@ -83,6 +83,14 @@ const loginLimiter = rateLimit({
 app.set("views", path.join(__dirname, "views"));
 app.set("view engine", "jade");
 
+// Redact sensitive tokens from URLs in access logs (Defense-in-depth)
+logger.token("url", (req) => {
+  const rawUrl = req.originalUrl || req.url || "";
+  return rawUrl
+    .replace(/([?&]token=)[^&]+/gi, "$1[REDACTED]")
+    .replace(/(\/validate-reset-token\/)[^/?#]+/gi, "$1[REDACTED]");
+});
+
 app.use(logger("dev"));
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: false }));

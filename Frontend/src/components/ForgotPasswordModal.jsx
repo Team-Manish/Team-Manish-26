@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from "react";
+import { requestPasswordReset } from "../auth/authService";
 import "./ForgotPasswordModal.css";
 
 function ForgotPasswordModal({ isOpen, onClose, initialEmail = "" }) {
   const [email, setEmail] = useState(initialEmail);
   const [emailError, setEmailError] = useState("");
+  const [generalError, setGeneralError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const modalRef = useRef(null);
@@ -11,6 +13,7 @@ function ForgotPasswordModal({ isOpen, onClose, initialEmail = "" }) {
   useEffect(() => {
     setEmail(initialEmail);
     setEmailError("");
+    setGeneralError("");
     setIsSuccess(false);
   }, [initialEmail, isOpen]);
 
@@ -35,27 +38,31 @@ function ForgotPasswordModal({ isOpen, onClose, initialEmail = "" }) {
     return re.test(val);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setEmailError("");
+    setGeneralError("");
 
     if (!email.trim()) {
-      setEmailError("Please enter your parent email address.");
+      setEmailError("Please enter your registered email address.");
       return;
     }
 
     if (!validateEmail(email)) {
-      setEmailError("Please enter a valid email format (e.g. parent@example.com).");
+      setEmailError("Please enter a valid email format (e.g. user@example.com).");
       return;
     }
 
     setIsSubmitting(true);
 
-    // Simulate recovery email API call
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      await requestPasswordReset(email);
       setIsSuccess(true);
-    }, 1200);
+    } catch (err) {
+      setGeneralError(err.message || "Failed to send password reset request. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -88,13 +95,30 @@ function ForgotPasswordModal({ isOpen, onClose, initialEmail = "" }) {
               </div>
               <h2 id="forgot-password-title">Reset Your Password</h2>
               <p className="modal-subtitle">
-                Enter your registered parent email address and we'll send you instructions to safely reset your password.
+                Enter your registered account email address. If an account is found, we will dispatch instructions to reset your password.
               </p>
             </div>
 
+            {generalError && (
+              <div
+                className="field-error"
+                style={{
+                  marginBottom: "12px",
+                  background: "#fef2f2",
+                  color: "#991b1b",
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  border: "1px solid #fecaca",
+                }}
+                role="alert"
+              >
+                <span>⚠️ {generalError}</span>
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} noValidate>
               <div className="form-group">
-                <label htmlFor="recovery-email">Parent Email Address</label>
+                <label htmlFor="recovery-email">Account Email Address</label>
                 <input
                   id="recovery-email"
                   type="email"
@@ -102,8 +126,9 @@ function ForgotPasswordModal({ isOpen, onClose, initialEmail = "" }) {
                   onChange={(e) => {
                     setEmail(e.target.value);
                     if (emailError) setEmailError("");
+                    if (generalError) setGeneralError("");
                   }}
-                  placeholder="Parent email address"
+                  placeholder="Registered email address"
                   aria-invalid={!!emailError}
                   aria-describedby={emailError ? "recovery-email-error" : undefined}
                   autoFocus
@@ -138,7 +163,7 @@ function ForgotPasswordModal({ isOpen, onClose, initialEmail = "" }) {
                   {isSubmitting ? (
                     <span className="spinner-container">
                       <span className="spinner" aria-hidden="true"></span>
-                      <span>Sending link...</span>
+                      <span>Processing...</span>
                     </span>
                   ) : (
                     "Send Reset Link"
@@ -155,17 +180,21 @@ function ForgotPasswordModal({ isOpen, onClose, initialEmail = "" }) {
                 <polyline points="22 4 12 14.01 9 11.01"></polyline>
               </svg>
             </div>
-            <h2>Password Link Sent!</h2>
+            <h2>Password Request Processed</h2>
             <p>
-              We have dispatched a password reset link to <strong>{email}</strong>. Please check your inbox (and spam folder) to reset your credentials.
+              If an active account is associated with that email, a secure time-limited password reset link has been dispatched.
+            </p>
+            <p style={{ fontSize: "13px", color: "var(--color-text-muted, #64748b)", marginTop: "8px" }}>
+              Please check your inbox (and spam folder). Reset links expire after 15 minutes.
             </p>
             <button
               type="button"
               className="btn-primary btn-full"
               onClick={onClose}
               autoFocus
+              style={{ marginTop: "16px" }}
             >
-              Back to Login
+              Back to Sign In
             </button>
           </div>
         )}

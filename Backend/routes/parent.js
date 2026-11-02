@@ -128,8 +128,11 @@ const handleParentChildAttendance = async (req, res) => {
       }
     }
 
-    // Security Check: Enforce that parent can ONLY access linked children
-    if (isParent && !linkedList.includes(targetStudentId)) {
+    const normalizedLinkedList = linkedList.map((id) => String(id).trim().toUpperCase());
+    const normalizedTarget = targetStudentId.toUpperCase();
+
+    // Security Check: Enforce that parent can ONLY access linked children (case-insensitive matching)
+    if (isParent && !normalizedLinkedList.includes(normalizedTarget)) {
       return res.status(403).json({
         success: false,
         error: "Forbidden",
@@ -154,10 +157,19 @@ const handleParentChildAttendance = async (req, res) => {
     const startDateStr = `${year}-${formattedMonth}-01`;
     const endDateStr = `${year}-${formattedMonth}-${String(daysInMonth).padStart(2, "0")}`;
 
-    const records = await Attendance.find({
-      studentId: targetStudentId,
-      dateStr: { $gte: startDateStr, $lte: endDateStr },
-    }).sort({ dateStr: 1 });
+    let records = [];
+    try {
+      records = await Attendance.find({
+        studentId: normalizedTarget,
+        dateStr: { $gte: startDateStr, $lte: endDateStr },
+      }).sort({ dateStr: 1 });
+    } catch (dbErr) {
+      if (mongoose.connection.readyState !== 1) {
+        records = [];
+      } else {
+        throw dbErr;
+      }
+    }
 
     let presentCount = 0;
     let absentCount = 0;

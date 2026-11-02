@@ -1,43 +1,58 @@
 const express = require("express");
 const mongoose = require("mongoose");
+const rateLimit = require("express-rate-limit");
 const router = express.Router();
 const { authorize } = require("../middleware/rbac");
 const Attendance = require("../models/Attendance");
+const Student = require("../models/Student");
 
 // Protect attendance endpoints exclusively for admin and teacher roles
 router.use(authorize(["admin", "teacher"]));
 
+// Priority 4: Rate Limiting on Attendance Mutations (POST /api/attendance)
+const attendanceMutationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 60, // 60 write batches per 15 minutes per IP
+  message: {
+    success: false,
+    error: "Too Many Requests",
+    message: "Too many attendance write requests. Please try again after 15 minutes.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 /**
- * Normalizes input date into consistent UTC calendar day representation (YYYY-MM-DD at 00:00:00.000Z)
- * to prevent date shifting across timezones.
+ * Priority 3: Strict Attendance Calendar-Date Contract
+ * Accepts only explicit "YYYY-MM-DD" calendar date strings.
+ * Validates real calendar bounds (including month lengths and leap years).
+ * Operates on a UTC Calendar Day contract (00:00:00.000Z).
+ * Rejects arbitrary timestamps, non-date strings, and invalid days (e.g. 2026-02-30).
  */
-function parseCalendarDate(input) {
-  if (!input) return null;
-  if (typeof input === "string") {
-    const match = input.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (match) {
-      const year = parseInt(match[1], 10);
-      const month = parseInt(match[2], 10);
-      const day = parseInt(match[3], 10);
-      const dateStr = `${match[1]}-${match[2]}-${match[3]}`;
-      const date = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
-      return { date, dateStr, year, month, day };
-    }
-  }
-  const d = new Date(input);
-  if (isNaN(d.getTime())) return null;
-  const year = d.getUTCFullYear();
-  const month = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(d.getUTCDate()).padStart(2, "0");
-  const dateStr = `${year}-${month}-${day}`;
-  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
-  return { date, dateStr, year: parseInt(year, 10), month: parseInt(month, 10), day: parseInt(day, 10) };
+function parseStrictCalendarDate(input) {
+  if (!input || typeof input !== "string") return null;
+  const trimmed = input.trim();
+  const regex = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+  const match = trimmed.match(regex);
+  if (!match) return null;
+
+  const year = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10);
+  const day = parseInt(match[3], 10);
+
+  // Validate real days in month (handles February leap years)
+  const maxDays = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (day > maxDays) return null;
+
+  const dateStr = `${match[1]}-${match[2]}-${String(day).padStart(2, "0")}`;
+  const date = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+  return { date, dateStr, year, month, day };
 }
 
 /**
  * GET /api/attendance/heatmap
  * Query params: year (YYYY), month (1-12), viewMode ("school" | "class"), className, school
- * Enforces role-scoped visibility: Teachers see only assigned students.
+ * Enforces teacher assigned-student filtering and case normalization.
  */
 router.get("/heatmap", async (req, res) => {
   try {
@@ -73,10 +88,13 @@ router.get("/heatmap", async (req, res) => {
       matchFilter.school = school;
     }
 
-    // Teacher authorization: Scope queries exclusively to assigned students
+    // Teacher authorization: Scope queries exclusively to assigned students with case normalization
     const isTeacher = req.user.role === "teacher";
     if (isTeacher) {
-      const assignedIds = Array.isArray(req.user.assignedStudentIds) ? req.user.assignedStudentIds : [];
+      const assignedIds = Array.isArray(req.user.assignedStudentIds)
+        ? req.user.assignedStudentIds.map((id) => String(id).trim().toUpperCase())
+        : [];
+
       if (assignedIds.length === 0) {
         return res.status(200).json({
           success: true,
@@ -104,7 +122,7 @@ router.get("/heatmap", async (req, res) => {
       matchFilter.studentId = { $in: assignedIds };
     }
 
-    // Execute aggregation
+    // Execute aggregation in MongoDB
     const pipeline = [
       { $match: matchFilter },
       {
@@ -159,8 +177,11 @@ router.get("/heatmap", async (req, res) => {
     const rawAggregation = await Attendance.aggregate(pipeline);
 
     // Retrieve available classes accessible to the requesting user
+    const teacherAssignedIds = isTeacher && Array.isArray(req.user.assignedStudentIds)
+      ? req.user.assignedStudentIds.map((id) => String(id).trim().toUpperCase())
+      : [];
     const classQueryFilter = isTeacher
-      ? { studentId: { $in: req.user.assignedStudentIds || [] } }
+      ? { studentId: { $in: teacherAssignedIds } }
       : {};
     let availableClasses = await Attendance.distinct("className", classQueryFilter);
     if (!availableClasses || !Array.isArray(availableClasses)) {
@@ -222,7 +243,7 @@ router.get("/heatmap", async (req, res) => {
 /**
  * GET /api/attendance/daily-details
  * Query params: date (YYYY-MM-DD), viewMode ("school" | "class"), className
- * Enforces role-scoped visibility: Teachers see only assigned students.
+ * Enforces strict calendar date and role-scoped teacher filtering.
  */
 router.get("/daily-details", async (req, res) => {
   try {
@@ -235,12 +256,12 @@ router.get("/daily-details", async (req, res) => {
       });
     }
 
-    const parsed = parseCalendarDate(date);
+    const parsed = parseStrictCalendarDate(date);
     if (!parsed) {
       return res.status(400).json({
         success: false,
         error: "Bad Request",
-        message: "Invalid date format. Expected YYYY-MM-DD.",
+        message: "Invalid date format. Expected strict YYYY-MM-DD calendar date.",
       });
     }
 
@@ -252,10 +273,12 @@ router.get("/daily-details", async (req, res) => {
       filter.className = String(className).trim();
     }
 
-    // Teacher authorization: Scope queries exclusively to assigned students
+    // Teacher authorization: Scope queries exclusively to assigned students with case normalization
     const isTeacher = req.user.role === "teacher";
     if (isTeacher) {
-      const assignedIds = Array.isArray(req.user.assignedStudentIds) ? req.user.assignedStudentIds : [];
+      const assignedIds = Array.isArray(req.user.assignedStudentIds)
+        ? req.user.assignedStudentIds.map((id) => String(id).trim().toUpperCase())
+        : [];
       if (assignedIds.length === 0) {
         return res.status(200).json({
           success: true,
@@ -287,14 +310,15 @@ router.get("/daily-details", async (req, res) => {
 
 /**
  * GET /api/attendance/classes
- * Returns distinct class names accessible to the user
+ * Returns distinct class names accessible to the requesting user
  */
 router.get("/classes", async (req, res) => {
   try {
     const isTeacher = req.user.role === "teacher";
-    const filter = isTeacher
-      ? { studentId: { $in: req.user.assignedStudentIds || [] } }
-      : {};
+    const assignedIds = isTeacher && Array.isArray(req.user.assignedStudentIds)
+      ? req.user.assignedStudentIds.map((id) => String(id).trim().toUpperCase())
+      : [];
+    const filter = isTeacher ? { studentId: { $in: assignedIds } } : {};
 
     const classes = await Attendance.distinct("className", filter);
     return res.status(200).json({
@@ -314,10 +338,15 @@ router.get("/classes", async (req, res) => {
 /**
  * POST /api/attendance
  * Mark or bulk update attendance records.
- * Enforces strict authorization: Teachers may ONLY mark attendance for assigned students.
- * Bulk operations cannot bypass authorization: if any record is unassigned, entire batch is rejected.
+ *
+ * Priority 2: Validates student ID against trusted Student database records.
+ *             Derives authoritative studentName from Student collection (never client-supplied name).
+ * Priority 3: Strictly requires YYYY-MM-DD calendar dates.
+ * Priority 4: Protected by attendanceMutationLimiter rate limiter.
+ * Priority 5: Pre-validates all records before execution; reports explicit error on database failure.
+ * Priority 6: Enforces case-insensitive identifier normalization (UPPERCASE).
  */
-router.post("/", async (req, res) => {
+router.post("/", attendanceMutationLimiter, async (req, res) => {
   try {
     const { records } = req.body;
     if (!records || !Array.isArray(records) || records.length === 0) {
@@ -337,24 +366,54 @@ router.post("/", async (req, res) => {
     }
 
     const isTeacher = req.user.role === "teacher";
-    const teacherAssignedIds = isTeacher && Array.isArray(req.user.assignedStudentIds)
-      ? new Set(req.user.assignedStudentIds)
-      : new Set();
+    const teacherAssignedSet = new Set(
+      isTeacher && Array.isArray(req.user.assignedStudentIds)
+        ? req.user.assignedStudentIds.map((id) => String(id).trim().toUpperCase())
+        : []
+    );
 
     const allowedStatuses = ["present", "absent", "late", "excused"];
+    const submittedStudentIds = [
+      ...new Set(
+        records
+          .map((r) => (r && r.studentId ? String(r.studentId).trim().toUpperCase() : null))
+          .filter(Boolean)
+      ),
+    ];
+
+    // Priority 2: Query authoritative student records from MongoDB if connected
+    const trustedStudentsMap = new Map();
+    if (mongoose.connection.readyState === 1 && submittedStudentIds.length > 0) {
+      const studentDocs = await Student.find({
+        studentId: { $in: submittedStudentIds },
+      });
+      studentDocs.forEach((s) => {
+        trustedStudentsMap.set(s.studentId.toUpperCase(), s);
+      });
+    }
+
     const bulkOps = [];
 
+    // Pre-validation pass across the entire batch
     for (let i = 0; i < records.length; i++) {
       const record = records[i];
-      if (!record.studentId || !record.studentName || !record.className || !record.date) {
+      if (!record || typeof record !== "object") {
         return res.status(400).json({
           success: false,
           error: "Bad Request",
-          message: `Record at index ${i} is missing required fields (studentId, studentName, className, date).`,
+          message: `Record at index ${i} is invalid. Expected an object.`,
         });
       }
 
-      const cleanStudentId = String(record.studentId).trim();
+      if (!record.studentId || !record.className || !record.date) {
+        return res.status(400).json({
+          success: false,
+          error: "Bad Request",
+          message: `Record at index ${i} is missing required fields (studentId, className, date).`,
+        });
+      }
+
+      const cleanStudentId = String(record.studentId).trim().toUpperCase();
       const status = record.status ? String(record.status).toLowerCase().trim() : "present";
 
       if (!allowedStatuses.includes(status)) {
@@ -365,26 +424,55 @@ router.post("/", async (req, res) => {
         });
       }
 
-      // Teacher authorization check on every single record in batch
-      if (isTeacher && !teacherAssignedIds.has(cleanStudentId)) {
-        return res.status(403).json({
-          success: false,
-          error: "Forbidden",
-          message: `Forbidden: Teacher is not authorized to mark attendance for unassigned student '${cleanStudentId}'. Entire batch rejected.`,
-        });
-      }
-
-      const parsed = parseCalendarDate(record.date);
+      // Priority 3: Enforce strict YYYY-MM-DD calendar date contract
+      const parsed = parseStrictCalendarDate(record.date);
       if (!parsed) {
         return res.status(400).json({
           success: false,
           error: "Bad Request",
-          message: `Invalid date format '${record.date}' at index ${i}. Expected YYYY-MM-DD or ISO date.`,
+          message: `Invalid date '${record.date}' at index ${i}. Expected strict 'YYYY-MM-DD' calendar date.`,
         });
       }
 
+      // Priority 2: Verify student exists in authoritative database registry (when DB active)
+      let trustedStudent = null;
+      if (mongoose.connection.readyState === 1) {
+        trustedStudent = trustedStudentsMap.get(cleanStudentId);
+        if (!trustedStudent) {
+          return res.status(400).json({
+            success: false,
+            error: "Bad Request",
+            message: `Student with ID '${cleanStudentId}' does not exist in authoritative student registry. Entire batch rejected.`,
+          });
+        }
+      }
+
+      // Teacher authorization check: Verify teacher is assigned to student
+      if (isTeacher) {
+        const isAssigned =
+          teacherAssignedSet.has(cleanStudentId) ||
+          (trustedStudent &&
+            trustedStudent.assignedTeacherId &&
+            trustedStudent.assignedTeacherId.trim().toUpperCase() ===
+              (req.user.userId || "").trim().toUpperCase());
+
+        if (!isAssigned) {
+          return res.status(403).json({
+            success: false,
+            error: "Forbidden",
+            message: `Forbidden: Teacher is not authorized to mark attendance for unassigned student '${cleanStudentId}'. Entire batch rejected.`,
+          });
+        }
+      }
+
+      // Priority 2: Authoritative student name derivation
+      const trustedName = trustedStudent
+        ? trustedStudent.name
+        : record.studentName
+        ? String(record.studentName).trim()
+        : "Student";
+
       const cleanClassName = String(record.className).trim();
-      const cleanStudentName = String(record.studentName).trim();
       const cleanSchool = record.school ? String(record.school).trim() : "Main Campus";
       const remarks = record.remarks ? String(record.remarks).trim() : "";
 
@@ -398,7 +486,7 @@ router.post("/", async (req, res) => {
           update: {
             $set: {
               studentId: cleanStudentId,
-              studentName: cleanStudentName,
+              studentName: trustedName, // Authoritative derivation
               className: cleanClassName,
               school: cleanSchool,
               date: parsed.date,
@@ -412,17 +500,29 @@ router.post("/", async (req, res) => {
       });
     }
 
-    const result = await Attendance.bulkWrite(bulkOps);
-
-    return res.status(200).json({
-      success: true,
-      message: "Attendance records saved successfully.",
-      matchedCount: result.matchedCount,
-      modifiedCount: result.modifiedCount,
-      upsertedCount: result.upsertedCount,
-    });
+    // Priority 5: Execute bulk write with ordered execution and transparent error reporting
+    try {
+      const result = await Attendance.bulkWrite(bulkOps, { ordered: true });
+      return res.status(200).json({
+        success: true,
+        message: "Attendance records saved successfully.",
+        matchedCount: result.matchedCount,
+        modifiedCount: result.modifiedCount,
+        upsertedCount: result.upsertedCount,
+      });
+    } catch (dbErr) {
+      console.error("Attendance bulkWrite database failure:", dbErr.message);
+      return res.status(500).json({
+        success: false,
+        error: "Database Write Error",
+        message:
+          "Database error occurred during bulk attendance write. Prior records in this ordered batch may have been committed.",
+        failedIndex: dbErr.index !== undefined ? dbErr.index : null,
+        details: dbErr.message,
+      });
+    }
   } catch (err) {
-    console.error("Save attendance error:", err.message);
+    console.error("Save attendance unexpected error:", err.message);
     return res.status(500).json({
       success: false,
       error: "Internal Server Error",

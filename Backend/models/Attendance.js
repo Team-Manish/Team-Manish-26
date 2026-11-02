@@ -8,6 +8,7 @@ const attendanceSchema = new mongoose.Schema(
       type: String,
       required: [true, "studentId is required"],
       trim: true,
+      uppercase: true,
       index: true,
     },
     studentName: {
@@ -37,7 +38,7 @@ const attendanceSchema = new mongoose.Schema(
       required: [true, "dateStr is required"],
       trim: true,
       index: true,
-      match: [/^\d{4}-\d{2}-\d{2}$/, "dateStr must be in YYYY-MM-DD format"],
+      match: [/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, "dateStr must be in YYYY-MM-DD format"],
     },
     status: {
       type: String,
@@ -59,8 +60,12 @@ const attendanceSchema = new mongoose.Schema(
   }
 );
 
-// Pre-validate hook to ensure date and dateStr are consistent UTC calendar representations
+// Pre-validate hook to ensure dateStr and date are always consistent UTC calendar representations
 attendanceSchema.pre("validate", function () {
+  if (this.studentId) {
+    this.studentId = this.studentId.trim().toUpperCase();
+  }
+
   if (this.date && !this.dateStr) {
     const d = new Date(this.date);
     if (!isNaN(d.getTime())) {
@@ -70,6 +75,7 @@ attendanceSchema.pre("validate", function () {
       this.dateStr = `${year}-${month}-${day}`;
     }
   }
+
   if (this.dateStr && !this.date) {
     const parts = this.dateStr.split("-").map(Number);
     if (parts.length === 3) {
@@ -78,10 +84,10 @@ attendanceSchema.pre("validate", function () {
   }
 });
 
-// Compound unique index ensuring at most one record per student per date per class
+// Compound unique index ensuring at most one record per student per calendar date per class
 attendanceSchema.index({ studentId: 1, dateStr: 1, className: 1 }, { unique: true });
 
-// Performance indexes for class-level and school-level aggregations
+// Query indexes for class-level and school-level aggregations
 attendanceSchema.index({ dateStr: 1, className: 1 });
 attendanceSchema.index({ dateStr: 1, school: 1 });
 attendanceSchema.index({ date: 1, className: 1 });

@@ -1,0 +1,151 @@
+.student-selector-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  position: relative;
+}
+
+.selector-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text-main, #1e293b);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.selector-input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.selector-input {
+  width: 100%;
+  padding: 0.7rem 4rem 0.7rem 1rem;
+  font-size: 0.95rem;
+  font-family: inherit;
+  border: 1.5px solid var(--color-border, #cbd5e1);
+  border-radius: 8px;
+  background-color: var(--color-surface, #ffffff);
+  color: var(--color-text-main, #0f172a);
+  transition: all 0.2s ease-in-out;
+}
+
+.selector-input:focus {
+  outline: none;
+  border-color: var(--color-primary, #3b82f6);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.selector-actions {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.clear-selection-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.85rem;
+  border-radius: 4px;
+}
+
+.clear-selection-btn:hover {
+  color: #ef4444;
+  background: #fee2e2;
+}
+
+.dropdown-toggle-btn {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0.2rem;
+  font-size: 0.75rem;
+}
+
+.student-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--color-surface, #ffffff);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 8px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  list-style: none;
+  padding: 0.4rem 0;
+  margin: 0;
+}
+
+.student-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 1rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.student-dropdown-item:hover {
+  background-color: var(--color-bg-subtle, #f1f5f9);
+}
+
+.student-dropdown-item.is-selected {
+  background-color: var(--color-primary-light, #eff6ff);
+}
+
+.item-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--color-primary, #3b82f6);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.item-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.item-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--color-text-main, #0f172a);
+}
+
+.item-details {
+  font-size: 0.75rem;
+  color: var(--color-text-muted, #64748b);
+}
+
+.item-check {
+  color: var(--color-primary, #3b82f6);
+  font-weight: bold;
+}
+
+.dropdown-loading-item,
+.dropdown-empty-item {
+  padding: 1rem;
+  text-align: center;
+  color: var(--color-text-muted, #64748b);
+  font-size: 0.85rem;
+}
